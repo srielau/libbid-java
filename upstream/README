@@ -1,0 +1,14 @@
+Intel RDFP test vectors
+=======================
+
+`TESTS/readtest.in` and `TESTS/README` come from Intel's Decimal
+Floating-Point Math Library (Intel RDFP Math Library 2.0 Update 4).
+They are the correctness oracle for BID64 and BID128 in this Java port.
+
+The original C library is not vendored in this repository. Obtain it from
+Intel if you need the C sources:
+
+https://www.intel.com/content/www/us/en/developer/articles/tool/intel-decimal-floating-point-math-library.html
+
+License: LICENSE-INTEL at the repository root (BSD-3-Clause).
+Do not use GCC's GPL copy of libbid as a source for ports.

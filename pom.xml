@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+        https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>org.bidfp</groupId>
+  <artifactId>libbid-java</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <packaging>jar</packaging>
+  <name>libbid-java</name>
+  <description>Pure-Java IEEE 754 BID decimal64 and decimal128 arithmetic</description>
+  <url>https://github.com/srielau/libbid-java</url>
+
+  <licenses>
+    <license>
+      <name>Apache License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+    </license>
+    <license>
+      <name>BSD 3-Clause (Intel RDFP portions)</name>
+      <url>https://opensource.org/licenses/BSD-3-Clause</url>
+    </license>
+  </licenses>
+
+  <developers>
+    <developer>
+      <name>Serge Rielau</name>
+      <url>https://github.com/srielau</url>
+    </developer>
+  </developers>
+
+  <scm>
+    <connection>scm:git:https://github.com/srielau/libbid-java.git</connection>
+    <developerConnection>scm:git:git@github.com:srielau/libbid-java.git</developerConnection>
+    <url>https://github.com/srielau/libbid-java</url>
+  </scm>
+
+  <properties>
+    <maven.compiler.release>17</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <junit.version>5.11.4</junit.version>
+    <jmh.version>1.37</jmh.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.15.0</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.5.2</version>
+      </plugin>
+    </plugins>
+  </build>
+
+  <profiles>
+    <profile>
+      <id>jmh</id>
+      <dependencies>
+        <dependency>
+          <groupId>org.openjdk.jmh</groupId>
+          <artifactId>jmh-core</artifactId>
+          <version>${jmh.version}</version>
+        </dependency>
+        <dependency>
+          <groupId>org.openjdk.jmh</groupId>
+          <artifactId>jmh-generator-annprocess</artifactId>
+          <version>${jmh.version}</version>
+          <scope>provided</scope>
+        </dependency>
+      </dependencies>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-compiler-plugin</artifactId>
+            <configuration>
+              <compileSourceRoots>
+                <compileSourceRoot>${project.basedir}/src/main/java</compileSourceRoot>
+                <compileSourceRoot>${project.basedir}/src/jmh/java</compileSourceRoot>
+              </compileSourceRoots>
+              <annotationProcessorPaths>
+                <path>
+                  <groupId>org.openjdk.jmh</groupId>
+                  <artifactId>jmh-generator-annprocess</artifactId>
+                  <version>${jmh.version}</version>
+                </path>
+              </annotationProcessorPaths>
+            </configuration>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-shade-plugin</artifactId>
+            <version>3.6.2</version>
+            <executions>
+              <execution>
+                <phase>package</phase>
+                <goals>
+                  <goal>shade</goal>
+                </goals>
+                <configuration>
+                  <createDependencyReducedPom>false</createDependencyReducedPom>
+                  <finalName>benchmarks</finalName>
+                  <transformers>
+                    <transformer implementation=
+                        "org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                      <mainClass>org.openjdk.jmh.Main</mainClass>
+                    </transformer>
+                  </transformers>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+</project>

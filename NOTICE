@@ -1,0 +1,11 @@
+Java BID decimal floating-point library
+Copyright 2026 Serge Rielau
+
+This product includes a Java port of algorithms from the Intel Decimal
+Floating-Point Math Library (Intel RDFP Math Library 2.0 Update 4).
+Copyright (c) 2007-2025, Intel Corp.
+See LICENSE-INTEL.
+
+The Intel C sources themselves are not redistributed here. The Java
+implementation was derived from that library. Intel's BID64 and BID128
+test vectors from TESTS/readtest.in are retained under upstream/TESTS/.
