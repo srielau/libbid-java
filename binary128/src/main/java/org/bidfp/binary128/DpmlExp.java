@@ -8,60 +8,81 @@
  */
 package org.bidfp.binary128;
 
-import org.bidfp.binary128.tables.IeeeConstants;
-
 /**
  * exp / expm1 / exp2 / exp10 kernels (DPML {@code dpml_ux_exp.c} family).
- * Range reduction uses ln2 / log2(e); the reduced exponential is a Taylor
- * series evaluated with unpacked add/mul/div, not {@code Math.exp}.
+ * Range reduction and minimax evaluation follow the Intel QUAD UX path.
  */
 public final class DpmlExp {
   private DpmlExp() {
   }
 
   public static Binary128 exp(Binary128 x, RoundingMode mode, StatusFlags st) {
-    Unpacked a = UxOps.unpack(x);
-    if (a.isNaN()) {
-      if (a.signaling) {
-        st.raise(StatusFlags.INVALID);
-      }
-      return Binary128.canonicalNaN(false);
-    }
-    if (a.isInfinite()) {
-      return a.sign != 0 ? Binary128.ZERO : Binary128.POSITIVE_INFINITY;
-    }
-    if (a.isZero()) {
-      return Binary128.ONE;
-    }
-    StatusFlags local = new StatusFlags();
-    Unpacked nTimes = new Unpacked();
-    Unpacked r = new Unpacked();
-    Unpacked tmp = new Unpacked();
-    Unpacked log2e = UxOps.unpack(IeeeConstants.LOG2E);
-    Unpacked ln2 = UxOps.unpack(IeeeConstants.LN2);
-    UxOps.mulUnpacked(a, log2e, tmp, local);
-    int n = KernelEval.roundToInt(tmp);
-    Unpacked ni = KernelEval.fromInt(n);
-    UxOps.mulUnpacked(ni, ln2, nTimes, local);
-    Unpacked na = a.copy();
-    UxOps.negate(nTimes);
-    UxOps.addsubUnpacked(na, nTimes, r, local);
-    Unpacked series = new Unpacked();
-    KernelEval.expSeries(r, series, local);
-    series.exponent += n;
-    return UxOps.pack(series, mode, st);
+    return expCommon(x, false, mode, st);
   }
 
   public static Binary128 exp2(Binary128 x, RoundingMode mode, StatusFlags st) {
-    return exp(UxOps.mul(x, IeeeConstants.LN2, mode, new StatusFlags()), mode, st);
+    if (x.isNaN()) {
+      return DpmlExpHyperKernel.quietNaN(x, st);
+    }
+    if (x.isInfinite()) {
+      return x.isSigned() ? Binary128.ZERO : Binary128.POSITIVE_INFINITY;
+    }
+    if (x.isZero()) {
+      return Binary128.ONE;
+    }
+    StatusFlags local = new StatusFlags();
+    Unpacked result = DpmlExpHyperKernel.exp2(UxOps.unpack(x), local);
+    return UxOps.pack(result, mode, st);
   }
 
   public static Binary128 exp10(Binary128 x, RoundingMode mode, StatusFlags st) {
-    return exp(UxOps.mul(x, IeeeConstants.LN10, mode, new StatusFlags()), mode, st);
+    return expCommon(x, true, mode, st);
   }
 
   public static Binary128 expm1(Binary128 x, RoundingMode mode, StatusFlags st) {
-    Binary128 e = exp(x, mode, new StatusFlags());
-    return UxOps.sub(e, Binary128.ONE, mode, st);
+    if (x.isNaN()) {
+      return DpmlExpHyperKernel.quietNaN(x, st);
+    }
+    if (x.isInfinite()) {
+      return x.isSigned() ? Binary128.fromRawBits(0xbfff_0000_0000_0000L, 0) : x;
+    }
+    if (x.isZero()) {
+      return x;
+    }
+
+    StatusFlags local = new StatusFlags();
+    DpmlExpHyperKernel.Reduction reduction =
+        DpmlExpHyperKernel.reduce(UxOps.unpack(x), false, local);
+    Unpacked result;
+    if (reduction.scale == 0) {
+      result = DpmlExpHyperKernel.expm1Polynomial(reduction.argument, local);
+    } else {
+      result = DpmlExpHyperKernel.expPolynomial(reduction.argument, false, local);
+      result.exponent += (int) reduction.scale;
+      Unpacked one = UxOps.unpack(Binary128.ONE);
+      result = DpmlExpHyperKernel.sub(result, one, local);
+    }
+    return UxOps.pack(result, mode, st);
+  }
+
+  private static Binary128 expCommon(
+      Binary128 x, boolean base10, RoundingMode mode, StatusFlags st) {
+    if (x.isNaN()) {
+      return DpmlExpHyperKernel.quietNaN(x, st);
+    }
+    if (x.isInfinite()) {
+      return x.isSigned() ? Binary128.ZERO : Binary128.POSITIVE_INFINITY;
+    }
+    if (x.isZero()) {
+      return Binary128.ONE;
+    }
+
+    StatusFlags local = new StatusFlags();
+    DpmlExpHyperKernel.Reduction reduction =
+        DpmlExpHyperKernel.reduce(UxOps.unpack(x), base10, local);
+    Unpacked result =
+        DpmlExpHyperKernel.expPolynomial(reduction.argument, base10, local);
+    result.exponent += (int) reduction.scale;
+    return UxOps.pack(result, mode, st);
   }
 }

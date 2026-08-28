@@ -24,20 +24,24 @@ Normals have an implicit leading 1 (113-bit significand). Quiet NaN sets
 - Arithmetic: `add` / `subtract` / `multiply` / `divide` / `sqrt` with
   explicit `RoundingMode` and `StatusFlags` (no process-global FPSR).
 - Libm facade: `Dpml.exp`, `log`, `pow`, `cbrt`, `sin`/`cos`/`tan`, inverse
-  trig, hyperbolics, `erf`/`erfc`, `lgamma`/`tgamma`.
+  trig (including `atan2`), hyperbolics, `erf`/`erfc`, `lgamma`/`tgamma`.
 
 ## What landed
 
 - Packed classification and field contract for `BidConvert`.
 - Unpacked UX (`Unpacked` + `UxOps`): normalize, unpack, five-mode pack,
   add/sub/mul/div/compare/sqrt. Pack uses the DPML `S/K/L/R` bit-vectors.
-- Kernel families listed above, evaluated with unpacked add/mul/div (not
-  `Math.exp`). Coefficient *tables* from `*_t_table.c` are not dumped;
-  range reduction uses IEEE constants in `tables/IeeeConstants`.
+- Kernel families listed above use Intel QUAD UX range reduction and
+  rational/polynomial paths (not `java.lang.Math`).
+- Intel QUAD UX tables are generated into
+  `tables/{Cons,Exp,Log,Pow,Cbrt,Trig,InvTrig,InvHyper,Erf,Lgamma}X` and
+  `FourOverPi` by `binary128/tools/gen_dpml_tables.py`, which reads an external
+  `LIBRARY/float128` tree.
+- Tests include 1,522 packed vectors generated from Intel's soft
+  `bid_f128_*` entry points. Kernel-family tests require exact special results
+  and compare finite outputs in ULPs.
 
-## What is stubbed / follow-up
+## Follow-up outside this artifact
 
-- Full Intel generated polynomial tables (`dpml_pow_t_table.c` and friends).
 - Decimal Payne-Hanek moduli (BID wrappers, not this JAR).
 - `bid/` convert + `BidTranscendental` rewire (see `AGENTS.md` close-the-gap).
-- Negative-argument reflection for `tgamma`/`lgamma`.

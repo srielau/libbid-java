@@ -4,16 +4,23 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 OUT="$ROOT/target/classes"
 JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}"
+if [[ ! -x "$JAVA_HOME/bin/javac" ]] && [[ -x /usr/libexec/java_home ]]; then
+  JAVA_HOME="$(/usr/libexec/java_home -v 17)"
+fi
 JAVAC="$JAVA_HOME/bin/javac"
 JAVA="$JAVA_HOME/bin/java"
 
 rm -rf "$ROOT/target"
 mkdir -p "$OUT"
 
-mapfile -t SOURCES < <(
-  find "$ROOT/binary128/src/main/java" "$ROOT/binary128/src/test/java" \
-       "$ROOT/bid/src/main/java" "$ROOT/bid/src/test/java" \
-       -name '*.java' ! -name 'LibraryTests.java' ! -name 'Binary128Test.java' | sort
+SOURCES=()
+while IFS= read -r source; do
+  SOURCES+=("$source")
+done < <(
+  find "$ROOT/binary128/src/main/java" "$ROOT/bid/src/main/java" \
+       "$ROOT/bid/src/test/java" -name '*.java' ! -name 'LibraryTests.java'
+  printf '%s\n' \
+      "$ROOT/binary128/src/test/java/org/bidfp/binary128/Binary128Check.java"
 )
 
 "$JAVAC" --release 17 -Werror -Xlint:all -d "$OUT" "${SOURCES[@]}"

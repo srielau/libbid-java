@@ -115,11 +115,12 @@ public final class Binary128 {
         return sign ? NEGATIVE_ZERO : ZERO;
       }
       int clz = Long.numberOfLeadingZeros(dfrac);
-      int shift = clz - 12;
+      int shift = clz - 11;
       long sig = dfrac << shift;
       int unbiased = -1022 - shift;
       int biased = unbiased + BIAS;
-      return fromFields(sign, biased, sig >>> 4, sig << 60);
+      long fraction = sig & 0x000f_ffff_ffff_ffffL;
+      return fromFields(sign, biased, fraction >>> 4, fraction << 60);
     }
     int biased = dexp - 1023 + BIAS;
     return fromFields(sign, biased, dfrac >>> 4, dfrac << 60);
@@ -131,7 +132,13 @@ public final class Binary128 {
       if (u.signaling) {
         status.raise(StatusFlags.INVALID);
       }
-      return Double.NaN;
+      long payload = (fractionHigh() << 4) | (fractionLow() >>> 60);
+      payload |= 0x0008_0000_0000_0000L;
+      long bits = 0x7ff0_0000_0000_0000L | payload;
+      if (isSigned()) {
+        bits |= MASK_SIGN;
+      }
+      return Double.longBitsToDouble(bits);
     }
     if (u.isInfinite()) {
       return u.sign != 0 ? Double.NEGATIVE_INFINITY : Double.POSITIVE_INFINITY;
@@ -139,31 +146,10 @@ public final class Binary128 {
     if (u.isZero()) {
       return u.sign != 0 ? -0.0 : 0.0;
     }
-    boolean sign = (high & MASK_SIGN) != 0L;
-    int biased = biasedExponent();
-    long frac112 = ((high & MASK_FRACTION_HIGH) << 64) | low;
-    if (biased == 0x7fff) {
-      return sign ? Double.NEGATIVE_INFINITY : Double.POSITIVE_INFINITY;
+    if (isSubnormal()) {
+      status.raise(StatusFlags.DENORMAL);
     }
-    if (biased == 0) {
-      return sign ? -0.0 : 0.0;
-    }
-    int dunb = biased - BIAS;
-    int dbias = dunb + 1023;
-    long dfrac = (frac112 >>> (112 - 52)) & 0x000f_ffff_ffff_ffffL;
-    if (dbias <= 0) {
-      status.raise(StatusFlags.UNDERFLOW | StatusFlags.INEXACT);
-      return sign ? -0.0 : 0.0;
-    }
-    if (dbias >= 0x7ff) {
-      status.raise(StatusFlags.OVERFLOW | StatusFlags.INEXACT);
-      return sign ? Double.NEGATIVE_INFINITY : Double.POSITIVE_INFINITY;
-    }
-    long bits = ((long) dbias << 52) | dfrac;
-    if (sign) {
-      bits |= MASK_SIGN;
-    }
-    return Double.longBitsToDouble(bits);
+    return IeeeRound.binary64(this, mode, status);
   }
 
   public long highBits() {
@@ -250,9 +236,6 @@ public final class Binary128 {
   }
 
   public Binary128 negate() {
-    if (isNaN()) {
-      return this;
-    }
     return fromRawBits(high ^ MASK_SIGN, low);
   }
 

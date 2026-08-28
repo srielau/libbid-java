@@ -6,75 +6,155 @@ public final class Binary128Check {
   }
 
   public static void main(String[] args) {
-    Binary128 zero = Binary128.fromRawBits(0L, 0L);
-    if (!zero.isZero() || !zero.isFinite()) {
-      throw new AssertionError("zero");
+    RoundingMode nearest = RoundingMode.TIES_TO_EVEN;
+    Binary128 two = Binary128.fromRawBits(0x4000_0000_0000_0000L, 0L);
+    checkEquals(two, Binary128.ONE.add(Binary128.ONE, nearest, new StatusFlags()),
+        "1+1");
+    checkEquals(
+        Binary128.fromRawBits(
+            0x3ffd_5555_5555_5555L, 0x5555_5555_5555_5555L),
+        Binary128.ONE.divide(Binary128.fromBinary64(3.0), nearest, new StatusFlags()),
+        "1/3");
+    checkEquals(
+        Binary128.fromRawBits(
+            0x3fff_6a09_e667_f3bcL, 0xc908_b2fb_1366_ea95L),
+        two.sqrt(nearest, new StatusFlags()),
+        "sqrt(2)");
+
+    long[] doubleSamples = {
+        0x0000_0000_0000_0000L,
+        0x8000_0000_0000_0000L,
+        0x0000_0000_0000_0001L,
+        0x000f_ffff_ffff_ffffL,
+        0x0010_0000_0000_0000L,
+        0x3ff8_0000_0000_0000L,
+        0x7fef_ffff_ffff_ffffL
+    };
+    for (long bits : doubleSamples) {
+      Binary128 converted = Binary128.fromBinary64(Double.longBitsToDouble(bits));
+      checkDouble(bits, converted.toBinary64(nearest, new StatusFlags()),
+          "binary64 round trip");
     }
-    Binary128 inf = Binary128.fromRawBits(0x7fff_0000_0000_0000L, 0L);
-    if (!inf.isInfinite() || inf.isNaN()) {
-      throw new AssertionError("inf");
-    }
-    Binary128 nan = Binary128.fromRawBits(0x7fff_8000_0000_0000L, 0L);
-    if (!nan.isNaN() || nan.isInfinite() || nan.isSignalingNaN()) {
-      throw new AssertionError("nan");
-    }
-    if (Binary128.ONE.significandHigh() != (1L << 48)) {
-      throw new AssertionError("implicit bit");
-    }
-    if (Binary128.fromFields(false, 0x3fff, 0L, 0L).equals(Binary128.ONE) == false) {
-      throw new AssertionError("fromFields");
-    }
-    StatusFlags st = new StatusFlags();
-    Binary128 two = Binary128.ONE.add(Binary128.ONE, RoundingMode.TIES_TO_EVEN, st);
-    if (!two.equals(Binary128.fromRawBits(0x4000_0000_0000_0000L, 0L))) {
-      throw new AssertionError("1+1=" + two);
-    }
-    Binary128 half = Binary128.fromRawBits(0x3ffe_0000_0000_0000L, 0L);
-    Binary128 prod = Binary128.ONE.multiply(half, RoundingMode.TIES_TO_EVEN, st);
-    if (!prod.equals(half)) {
-      throw new AssertionError("1*0.5=" + prod);
-    }
-    Binary128 q = Binary128.ONE.divide(two, RoundingMode.TIES_TO_EVEN, st);
-    if (!q.equals(half)) {
-      throw new AssertionError("1/2=" + q);
-    }
-    Binary128 s = Binary128.ONE.sqrt(RoundingMode.TIES_TO_EVEN, st);
-    if (!s.equals(Binary128.ONE)) {
-      throw new AssertionError("sqrt(1)=" + s);
-    }
-    Binary128 four = Binary128.fromRawBits(0x4001_0000_0000_0000L, 0L);
-    Binary128 sqrt4 = four.sqrt(RoundingMode.TIES_TO_EVEN, st);
-    if (!sqrt4.equals(two)) {
-      throw new AssertionError("sqrt(4)=" + sqrt4);
-    }
-    Binary128 e0 = Dpml.exp(Binary128.ZERO, RoundingMode.TIES_TO_EVEN, st);
-    if (!e0.equals(Binary128.ONE)) {
-      throw new AssertionError("exp(0)=" + e0);
-    }
-    Binary128 l1 = Dpml.log(Binary128.ONE, RoundingMode.TIES_TO_EVEN, st);
-    if (!l1.isZero()) {
-      throw new AssertionError("log(1)=" + l1);
-    }
-    Binary128 roundTrip = Binary128.fromBinary64(1.5);
-    if (roundTrip.biasedExponent() != 0x3fff
-        || roundTrip.fractionHigh() == 0L) {
-      throw new AssertionError("fromBinary64");
-    }
-    StatusFlags dz = new StatusFlags();
-    Binary128 infz = Binary128.ONE.divide(Binary128.ZERO,
-        RoundingMode.TIES_TO_EVEN, dz);
-    if (!infz.isInfinite() || !dz.contains(StatusFlags.DIVIDE_BY_ZERO)) {
-      throw new AssertionError("div0");
-    }
-    if (UxOps.compare(Binary128.ONE, two, new StatusFlags()) >= 0) {
-      throw new AssertionError("compare");
-    }
-    Unpacked u = UxOps.unpack(Binary128.ONE);
-    Binary128 packed = UxOps.pack(u, RoundingMode.TIES_TO_EVEN,
-        new StatusFlags());
-    if (!packed.equals(Binary128.ONE)) {
-      throw new AssertionError("unpack/pack");
-    }
+    checkEquals(
+        Binary128.fromRawBits(0x3bcd_0000_0000_0000L, 0L),
+        Binary128.fromBinary64(Double.MIN_VALUE),
+        "binary64 minimum subnormal");
+
+    Binary128 tie = Binary128.fromRawBits(
+        0x3fff_0000_0000_0000L, 1L << 59);
+    checkDouble(0x3ff0_0000_0000_0000L,
+        tie.toBinary64(RoundingMode.TIES_TO_EVEN, new StatusFlags()), "tie even");
+    checkDouble(0x3ff0_0000_0000_0001L,
+        tie.toBinary64(RoundingMode.TIES_AWAY, new StatusFlags()), "tie away");
+    checkDouble(0x3ff0_0000_0000_0001L,
+        tie.toBinary64(RoundingMode.TOWARD_POSITIVE, new StatusFlags()), "tie up");
+    checkDouble(0x3ff0_0000_0000_0000L,
+        tie.toBinary64(RoundingMode.TOWARD_NEGATIVE, new StatusFlags()), "tie down");
+    checkDouble(0x3ff0_0000_0000_0000L,
+        tie.toBinary64(RoundingMode.TOWARD_ZERO, new StatusFlags()), "tie zero");
+    Binary128 negativeTie = tie.negate();
+    checkDouble(0xbff0_0000_0000_0001L,
+        negativeTie.toBinary64(RoundingMode.TIES_AWAY, new StatusFlags()),
+        "negative tie away");
+    checkDouble(0xbff0_0000_0000_0001L,
+        negativeTie.toBinary64(RoundingMode.TOWARD_NEGATIVE, new StatusFlags()),
+        "negative tie down");
+    checkDouble(0xbff0_0000_0000_0000L,
+        negativeTie.toBinary64(RoundingMode.TOWARD_POSITIVE, new StatusFlags()),
+        "negative tie up");
+
+    Binary128 largestSubnormal =
+        Binary128.fromRawBits(0x0000_ffff_ffff_ffffL, -1L);
+    Binary128 minimumNormal =
+        Binary128.fromRawBits(0x0001_0000_0000_0000L, 0L);
+    Binary128 normalBoundary = largestSubnormal.add(
+        minimumNormal, nearest, new StatusFlags());
+    checkEquals(
+        minimumNormal,
+        normalBoundary.divide(two, nearest, new StatusFlags()),
+        "minimum normal promotion");
+    checkEquals(
+        largestSubnormal,
+        normalBoundary.divide(two, RoundingMode.TOWARD_ZERO, new StatusFlags()),
+        "largest subnormal rounding");
+
+    checkEquals(
+        Binary128.NEGATIVE_ZERO,
+        Binary128.ONE.add(
+            Binary128.ONE.negate(),
+            RoundingMode.TOWARD_NEGATIVE,
+            new StatusFlags()),
+        "directed cancellation");
+
+    Binary128 signaling = Binary128.fromRawBits(
+        0xffff_1234_5678_9abcL, 0xdef0_1234_5678_9abcL);
+    StatusFlags nanStatus = new StatusFlags();
+    checkEquals(
+        Binary128.fromRawBits(
+            0xffff_9234_5678_9abcL, 0xdef0_1234_5678_9abcL),
+        signaling.add(Binary128.ONE, nearest, nanStatus),
+        "NaN payload");
+    checkFlags(StatusFlags.INVALID, nanStatus, "signaling NaN");
+    StatusFlags nanConvertStatus = new StatusFlags();
+    checkDouble(
+        0xfff9_2345_6789_abcdL,
+        signaling.toBinary64(nearest, nanConvertStatus),
+        "binary64 NaN payload");
+    checkFlags(StatusFlags.INVALID, nanConvertStatus, "binary64 signaling NaN");
+
+    StatusFlags divideStatus = new StatusFlags();
+    checkEquals(
+        Binary128.POSITIVE_INFINITY,
+        Binary128.ONE.divide(Binary128.ZERO, nearest, divideStatus),
+        "divide by zero");
+    checkFlags(StatusFlags.DIVIDE_BY_ZERO, divideStatus, "divide flag");
+
+    StatusFlags overflowStatus = new StatusFlags();
+    checkEquals(
+        Binary128.POSITIVE_MAX,
+        Binary128.POSITIVE_MAX.multiply(
+            two, RoundingMode.TOWARD_ZERO, overflowStatus),
+        "directed overflow");
+    checkFlags(
+        StatusFlags.OVERFLOW | StatusFlags.INEXACT,
+        overflowStatus,
+        "overflow flags");
+
+    Binary128 minimumSubnormal = Binary128.fromRawBits(0L, 1L);
+    StatusFlags underflowStatus = new StatusFlags();
+    checkEquals(
+        Binary128.ZERO,
+        minimumSubnormal.divide(two, nearest, underflowStatus),
+        "underflow to zero");
+    checkFlags(
+        StatusFlags.DENORMAL | StatusFlags.UNDERFLOW | StatusFlags.INEXACT,
+        underflowStatus,
+        "underflow flags");
+
     System.out.println("Binary128Check: all tests passed");
+  }
+
+  private static void checkEquals(
+      Binary128 expected, Binary128 actual, String label) {
+    if (!expected.equals(actual)) {
+      throw new AssertionError(
+          label + ": expected " + expected + ", got " + actual);
+    }
+  }
+
+  private static void checkDouble(long expectedBits, double actual, String label) {
+    long actualBits = Double.doubleToRawLongBits(actual);
+    if (expectedBits != actualBits) {
+      throw new AssertionError(String.format(
+          "%s: expected %016x, got %016x", label, expectedBits, actualBits));
+    }
+  }
+
+  private static void checkFlags(
+      int expected, StatusFlags actual, String label) {
+    if (actual.bits() != expected) {
+      throw new AssertionError(
+          label + ": expected flags " + expected + ", got " + actual.bits());
+    }
   }
 }
