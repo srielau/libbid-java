@@ -146,6 +146,13 @@ A later change in `bid/`:
 
 Until then, leave `BidTranscendental` as the provisional binary64 stub.
 
+## Landed (this port)
+
+Packed `Binary128` layout, `Unpacked`/`UxOps` (normalize, unpack, five-mode
+pack, add/sub/mul/div/sqrt/compare), and `Dpml*` kernel families via
+unpacked arithmetic. Intel `*_t_table.c` blobs are not vendored; see
+`README.md`. BID convert remains out of scope.
+
 ## Practical notes
 
 - `bid_binarydecimal.c` is ~148k lines, mostly tables. Do not dump it
