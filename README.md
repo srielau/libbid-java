@@ -30,14 +30,14 @@ and tests are Apache License 2.0. Keep `LICENSE`, `LICENSE-INTEL`, and
 This git tree publishes two JARs:
 
 - `org.bidfp:libbid-java` (`bid/`) - BID64/BID128
-- `org.bidfp:binary128` (`binary128/`) - packed binary128; DPML kernels TBD
+- `org.bidfp:binary128` (`binary128/`) - packed binary128 and DPML kernels
 
-Spark should depend on `libbid-java` (it pulls `binary128`). DPML port
-instructions: `binary128/AGENTS.md`.
+Spark should depend on `libbid-java` (it pulls `binary128`). DPML notes:
+`binary128/AGENTS.md`.
 
 Not in this release: BID32, BID256, binary80, mixed-width arithmetic,
-global rounding/flag modes. Packed `Binary128` exists; DPML libm and
-BID <-> binary128 convert are the remaining transcendental gap.
+global rounding/flag modes. BID <-> binary128 convert and Intel-matching
+transcendental wrappers are the remaining gap.
 
 ## Build and test
 
@@ -63,7 +63,14 @@ benchmarks/run.sh full
 
 Workloads compare BID64/BID128 with `MathContext.DECIMAL64` /
 `DECIMAL128` on equivalent operands and capture JSON plus environment metadata.
-See `benchmarks/README.md` for baseline and comparison guidance.
+See `benchmarks/README.md`. The binary128 suite covers arithmetic and public
+DPML kernel families:
+
+```bash
+mvn -Pjmh -pl binary128 package -DskipTests
+$JAVA_HOME/bin/java -jar binary128/target/binary128-benchmarks.jar \
+  '.*Binary128JmhBenchmark.*'
+```
 
 ## Coordinates
 

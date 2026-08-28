@@ -88,7 +88,19 @@ final class UxEval {
     Unpacked r1 = results.length > 1 && results[1] != null
         ? results[1]
         : new Unpacked();
+    evaluateRationalCore(
+        argument, table, coefsOffset, degree, flags, r0, r1, status);
+  }
 
+  private static void evaluateRationalCore(
+      Unpacked argument,
+      long[] table,
+      int coefsOffset,
+      int degree,
+      long flags,
+      Unpacked r0,
+      Unpacked r1,
+      StatusFlags status) {
     long f = flags;
     long signFlags = f;
     argument.exponent += getScale(f);
@@ -159,8 +171,6 @@ final class UxEval {
       Unpacked quot = new Unpacked();
       UxOps.divUnpacked(r0, r1, quot, status);
       r0.copyFrom(quot);
-    } else if (results.length > 1 && results[1] != null && results[1] != r1) {
-      results[1].copyFrom(r1);
     }
   }
 
@@ -173,14 +183,9 @@ final class UxEval {
       long flags,
       Unpacked result,
       StatusFlags status) {
-    evaluateRational(
-        argument,
-        table,
-        coefsOffset,
-        degree,
-        flags,
-        new Unpacked[] {result, new Unpacked()},
-        status);
+    evaluateRationalCore(
+        argument, table, coefsOffset, degree, flags,
+        result, new Unpacked(), status);
   }
 
   /**
@@ -196,11 +201,9 @@ final class UxEval {
       int bias,
       Unpacked result,
       StatusFlags status) {
-    int[] scaleOut = new int[1];
-    int[] opOut = new int[1];
-    unpackCoefToUx(table, coefsOffset, mask, bias, result, scaleOut, opOut);
-    result.sign = opOut[0] == ADD ? 0 : Unpacked.UX_SIGN_BIT;
-    result.exponent = scaleOut[0];
+    int metadata = unpackCoefToUx(table, coefsOffset, mask, bias, result);
+    result.sign = (metadata & 1) == ADD ? 0 : Unpacked.UX_SIGN_BIT;
+    result.exponent = metadata >> 1;
 
     Unpacked tmp = new Unpacked();
     Unpacked term = new Unpacked();
@@ -212,18 +215,17 @@ final class UxEval {
       UxOps.normalize(tmp);
       result.copyFrom(tmp);
       off += UxTable.FIXED_128_BYTES;
-      unpackCoefToUx(table, off, mask, bias, term, scaleOut, opOut);
+      metadata = unpackCoefToUx(table, off, mask, bias, term);
       term.sign = 0;
       term.exponent = 0;
-      if (opOut[0] == ADD) {
+      if ((metadata & 1) == ADD) {
         UxOps.addsubUnpacked(result, term, sum, status);
       } else {
-        Unpacked neg = term.copy();
-        UxOps.negate(neg);
-        UxOps.addsubUnpacked(result, neg, sum, status);
+        term.sign = Unpacked.UX_SIGN_BIT;
+        UxOps.addsubUnpacked(result, term, sum, status);
       }
       result.copyFrom(sum);
-      result.exponent += scaleOut[0];
+      result.exponent += metadata >> 1;
     }
   }
 
@@ -232,26 +234,24 @@ final class UxEval {
    * {@code digits[0] & ~mask}; {@code opOut} is {@link #ADD}/{@link #SUB};
    * {@code scaleOut} is {@code ((lsd >> 1) & mask) - bias}.
    */
-  static void unpackCoefToUx(
+  private static int unpackCoefToUx(
       long[] table,
       int byteOffset,
       long mask,
       int bias,
-      Unpacked dest,
-      int[] scaleOut,
-      int[] opOut) {
-    long[] loHi = new long[2];
-    UxTable.readFixed128(table, byteOffset, loHi);
-    long lsd = loHi[0];
-    long msd = loHi[1];
-    opOut[0] = (int) (lsd & 1L);
-    scaleOut[0] = (int) (((lsd >>> 1) & mask) - (long) bias);
+      Unpacked dest) {
+    int i = byteOffset >>> 3;
+    long lsd = table[i];
+    long msd = table[i + 1];
+    int operation = (int) (lsd & 1L);
+    int scale = (int) (((lsd >>> 1) & mask) - (long) bias);
     long fracLo = lsd & ~mask;
     if (msd == 0L && fracLo == 0L) {
       dest.setZero(0);
     } else {
       dest.setNorm(0, 0, msd, fracLo);
     }
+    return (scale << 1) | operation;
   }
 
   /**
@@ -277,9 +277,8 @@ final class UxEval {
       UxTable.fixed128ToUnpacked(
           table, coefsOffset + k * UxTable.FIXED_128_BYTES, coef);
       if (alternateSign) {
-        Unpacked neg = tmp.copy();
-        UxOps.negate(neg);
-        UxOps.addsubUnpacked(coef, neg, acc, status);
+        tmp.sign ^= Unpacked.UX_SIGN_BIT;
+        UxOps.addsubUnpacked(coef, tmp, acc, status);
       } else {
         UxOps.addsubUnpacked(coef, tmp, acc, status);
       }

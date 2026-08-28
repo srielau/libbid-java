@@ -41,6 +41,33 @@ Normals have an implicit leading 1 (113-bit significand). Quiet NaN sets
   `bid_f128_*` entry points. Kernel-family tests require exact special results
   and compare finite outputs in ULPs.
 
+## Benchmark
+
+The optional JMH suite measures packed arithmetic and all public DPML kernel
+families over deterministic, domain-appropriate binary128 inputs:
+
+```bash
+mvn -pl binary128 -Pjmh clean package -DskipTests
+java -jar binary128/target/binary128-benchmarks.jar \
+  '.*Binary128JmhBenchmark.*'
+```
+
+Use a method filter such as `'.*Binary128JmhBenchmark\.(exp|log|pow)'` for a
+shorter run. Each invocation includes clearing the explicit status flags.
+For repeatable comparisons, keep the JVM and JMH settings fixed and write JSON:
+
+```bash
+java -jar binary128/target/binary128-benchmarks.jar \
+  '.*Binary128JmhBenchmark.*' -wi 2 -i 3 -w 300ms -r 300ms -f 2 \
+  -prof gc -rf json -rff binary128/target/benchmark-results/result.json
+```
+
+On an Apple arm64 host with Temurin 17.0.18, this optimization pass reduced the
+geometric-mean latency of the 27 transcendental benchmarks from 1,071 to 833
+ns/op (22.3%). Every measured operation improved; individual gains ranged from
+1.4% for `asinh` to 43.2% for `expm1` and `sinh`. Results are machine-specific
+and should only be compared with identical JVM and JMH settings.
+
 ## Follow-up outside this artifact
 
 - Decimal Payne-Hanek moduli (BID wrappers, not this JAR).

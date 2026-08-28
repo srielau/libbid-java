@@ -35,7 +35,7 @@ final class UxRadianReduce {
       return reduceSmall(argument, octant, reduced, status);
     }
 
-    BigInteger fraction = unsigned128(argument.fracHi, argument.fracLo);
+    BigInteger fraction = Wide.u128(argument.fracHi, argument.fracLo);
     BigInteger numerator = fraction.multiply(FOUR_OVER_PI);
     int denominatorShift =
         FOUR_OVER_PI_BINARY_POINT + 128 - argument.exponent;
@@ -128,11 +128,8 @@ final class UxRadianReduce {
     return value;
   }
 
-  private static BigInteger unsigned128(long high, long low) {
-    return unsigned(high).shiftLeft(64).or(unsigned(low));
-  }
-
   private static BigInteger unsigned(long value) {
-    return new BigInteger(Long.toUnsignedString(value));
+    BigInteger magnitude = BigInteger.valueOf(value & Long.MAX_VALUE);
+    return value < 0 ? magnitude.setBit(63) : magnitude;
   }
 }

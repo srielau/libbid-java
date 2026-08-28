@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.math.BigInteger;
+import java.util.Random;
 import org.junit.jupiter.api.Test;
 
 final class Binary128Test {
@@ -240,6 +242,33 @@ final class Binary128Test {
     assertOverflow(Binary128.POSITIVE_INFINITY, RoundingMode.TOWARD_POSITIVE);
     assertOverflow(Binary128.POSITIVE_MAX, RoundingMode.TOWARD_NEGATIVE);
     assertOverflow(Binary128.POSITIVE_MAX, RoundingMode.TOWARD_ZERO);
+  }
+
+  @Test
+  void directNormalPackMatchesExactRounding() {
+    Random random = new Random(0x128_5eedL);
+    for (int trial = 0; trial < 10_000; trial++) {
+      int sign = random.nextBoolean() ? Unpacked.UX_SIGN_BIT : 0;
+      int exponent = random.nextInt(20_000) - 10_000;
+      long high = random.nextLong() | Unpacked.UX_MSB;
+      long low = random.nextLong();
+      Unpacked unpacked = new Unpacked();
+      unpacked.setNorm(sign, exponent, high, low);
+      for (RoundingMode mode : RoundingMode.values()) {
+        StatusFlags expectedStatus = new StatusFlags();
+        Binary128 expected = IeeeRound.binary128(
+            sign != 0,
+            Wide.u128(high, low),
+            BigInteger.ONE,
+            exponent - 128,
+            mode,
+            expectedStatus);
+        StatusFlags actualStatus = new StatusFlags();
+        Binary128 actual = UxOps.pack(unpacked, mode, actualStatus);
+        assertEquals(expected, actual);
+        assertEquals(expectedStatus.bits(), actualStatus.bits());
+      }
+    }
   }
 
   private static void assertDoubleBits(
