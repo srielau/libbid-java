@@ -55,8 +55,13 @@ public class BidJmhBenchmark {
     BigDecimal[] rightDecimal64;
     Bid128[] left128;
     Bid128[] right128;
+    long[] leftHigh128;
+    long[] leftLow128;
+    long[] rightHigh128;
+    long[] rightLow128;
     BigDecimal[] leftDecimal128;
     BigDecimal[] rightDecimal128;
+    long[] result128;
     StatusFlags flags;
     int index;
 
@@ -70,8 +75,13 @@ public class BidJmhBenchmark {
       rightDecimal64 = new BigDecimal[SIZE];
       left128 = new Bid128[SIZE];
       right128 = new Bid128[SIZE];
+      leftHigh128 = new long[SIZE];
+      leftLow128 = new long[SIZE];
+      rightHigh128 = new long[SIZE];
+      rightLow128 = new long[SIZE];
       leftDecimal128 = new BigDecimal[SIZE];
       rightDecimal128 = new BigDecimal[SIZE];
+      result128 = new long[2];
       flags = new StatusFlags();
       Random random = new Random(0x5eed_b1dL ^ workload.hashCode());
       for (int i = 0; i < SIZE; i++) {
@@ -98,6 +108,10 @@ public class BidJmhBenchmark {
       DecimalPair pair = createPair(random, 34);
       left128[position] = Bid128.parseExact(pair.left);
       right128[position] = Bid128.parseExact(pair.right);
+      leftHigh128[position] = left128[position].highBits();
+      leftLow128[position] = left128[position].lowBits();
+      rightHigh128[position] = right128[position].highBits();
+      rightLow128[position] = right128[position].lowBits();
       leftDecimal128[position] = new BigDecimal(pair.left);
       rightDecimal128[position] = new BigDecimal(pair.right);
     }
@@ -333,7 +347,7 @@ public class BidJmhBenchmark {
   @Benchmark
   public void bid64RawAdd(Operands data, Blackhole blackhole) {
     int i = data.nextIndex();
-    blackhole.consume(Bid64Add.addRawBits(
+    blackhole.consume(Bid64Raw.add(
         data.leftBits64[i], data.rightBits64[i], BID_ROUNDING, data.flags));
   }
 
@@ -354,7 +368,7 @@ public class BidJmhBenchmark {
   @Benchmark
   public void bid64RawMultiply(Operands data, Blackhole blackhole) {
     int i = data.nextIndex();
-    blackhole.consume(Bid64Multiply.multiplyRawBits(
+    blackhole.consume(Bid64Raw.mul(
         data.leftBits64[i], data.rightBits64[i], BID_ROUNDING, data.flags));
   }
 
@@ -374,7 +388,7 @@ public class BidJmhBenchmark {
   @Benchmark
   public void bid64RawDivide(Operands data, Blackhole blackhole) {
     int i = data.nextIndex();
-    blackhole.consume(Bid64Divide.divideRawBits(
+    blackhole.consume(Bid64Raw.div(
         data.leftBits64[i], data.rightBits64[i], BID_ROUNDING, data.flags));
   }
 
@@ -392,6 +406,21 @@ public class BidJmhBenchmark {
   }
 
   @Benchmark
+  public void bid128RawAdd(Operands data, Blackhole blackhole) {
+    int i = data.nextIndex();
+    Bid128Raw.add(
+        data.leftHigh128[i],
+        data.leftLow128[i],
+        data.rightHigh128[i],
+        data.rightLow128[i],
+        BID_ROUNDING,
+        data.flags,
+        data.result128);
+    blackhole.consume(data.result128[0]);
+    blackhole.consume(data.result128[1]);
+  }
+
+  @Benchmark
   public void bigDecimal128Add(Operands data, Blackhole blackhole) {
     int i = data.nextIndex();
     blackhole.consume(
@@ -406,6 +435,21 @@ public class BidJmhBenchmark {
   }
 
   @Benchmark
+  public void bid128RawMultiply(Operands data, Blackhole blackhole) {
+    int i = data.nextIndex();
+    Bid128Raw.mul(
+        data.leftHigh128[i],
+        data.leftLow128[i],
+        data.rightHigh128[i],
+        data.rightLow128[i],
+        BID_ROUNDING,
+        data.flags,
+        data.result128);
+    blackhole.consume(data.result128[0]);
+    blackhole.consume(data.result128[1]);
+  }
+
+  @Benchmark
   public void bigDecimal128Multiply(Operands data, Blackhole blackhole) {
     int i = data.nextIndex();
     blackhole.consume(
@@ -416,6 +460,21 @@ public class BidJmhBenchmark {
   public void bid128Divide(Operands data, Blackhole blackhole) {
     int i = data.nextIndex();
     blackhole.consume(data.left128[i].divide(data.right128[i], BID_ROUNDING, data.flags));
+  }
+
+  @Benchmark
+  public void bid128RawDivide(Operands data, Blackhole blackhole) {
+    int i = data.nextIndex();
+    Bid128Raw.div(
+        data.leftHigh128[i],
+        data.leftLow128[i],
+        data.rightHigh128[i],
+        data.rightLow128[i],
+        BID_ROUNDING,
+        data.flags,
+        data.result128);
+    blackhole.consume(data.result128[0]);
+    blackhole.consume(data.result128[1]);
   }
 
   @Benchmark

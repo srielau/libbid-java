@@ -57,12 +57,13 @@ mvn test
 ## JMH (optional)
 
 ```bash
-mvn -Pjmh clean package
-$JAVA_HOME/bin/java -jar bid/target/benchmarks.jar '.*BidJmhBenchmark.*'
+benchmarks/run.sh quick
+benchmarks/run.sh full
 ```
 
 Workloads compare BID64/BID128 with `MathContext.DECIMAL64` /
-`DECIMAL128` on equivalent operands.
+`DECIMAL128` on equivalent operands and capture JSON plus environment metadata.
+See `benchmarks/README.md` for baseline and comparison guidance.
 
 ## Coordinates
 

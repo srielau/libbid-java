@@ -6,3 +6,5 @@ target/
 .settings/
 *.class
 .DS_Store
+benchmark-results/
+__pycache__/
