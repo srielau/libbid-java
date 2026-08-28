@@ -27,6 +27,13 @@ final class Bid128Pow {
   static void pow(
       long xh, long xl, long yh, long yl,
       RoundingMode mode, StatusFlags flags, long[] out) {
+    int smallExponent = smallPositiveInteger(yh, yl);
+    if (smallExponent >= 2
+        && isFinite(xh)
+        && !isZero(xh, xl)) {
+      powSmallInteger(xh, xl, smallExponent, mode, flags, out);
+      return;
+    }
     Bid128 x = Bid128.fromRawBits(xh, xl);
     Bid128 y = Bid128.fromRawBits(yh, yl);
     if (x.isSignalingNaN() || y.isSignalingNaN()) {
@@ -228,6 +235,51 @@ final class Bid128Pow {
     } else {
       out[0] = result[0];
       out[1] = result[1];
+    }
+  }
+
+  private static int smallPositiveInteger(long high, long low) {
+    if (!isFinite(high)
+        || (high & Bid128.MASK_SIGN) != 0
+        || biasedExponent(high) != 6176
+        || (high & Bid128.MASK_COEFFICIENT) != 0
+        || low < 2L
+        || low > 5L) {
+      return -1;
+    }
+    return (int) low;
+  }
+
+  private static boolean isFinite(long high) {
+    return (high & Bid128.MASK_INFINITY) != Bid128.MASK_INFINITY;
+  }
+
+  private static boolean isZero(long high, long low) {
+    return !Bid128.isCanonicalFinite(high, low)
+        || ((high & Bid128.MASK_COEFFICIENT) | low) == 0L;
+  }
+
+  private static int biasedExponent(long high) {
+    if ((high & Bid128.MASK_STEERING_BITS) == Bid128.MASK_STEERING_BITS) {
+      return (int) ((high >>> 47) & 0x3fffL);
+    }
+    return (int) ((high & Bid128.MASK_EXPONENT) >>> 49);
+  }
+
+  private static void powSmallInteger(
+      long high, long low, int exponent,
+      RoundingMode mode, StatusFlags flags, long[] out) {
+    Bid128Raw.mul(high, low, high, low, mode, flags, out);
+    if (exponent == 2) {
+      return;
+    }
+    if (exponent == 3) {
+      Bid128Raw.mul(out[0], out[1], high, low, mode, flags, out);
+      return;
+    }
+    Bid128Raw.mul(out[0], out[1], out[0], out[1], mode, flags, out);
+    if (exponent == 5) {
+      Bid128Raw.mul(out[0], out[1], high, low, mode, flags, out);
     }
   }
 }

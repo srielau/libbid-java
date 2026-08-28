@@ -44,6 +44,8 @@ public final class Bid128Divide {
   private static final UInt128[] POW10 = powersOfTen();
   private static final long NAN_PAYLOAD_HIGH_MASK = 0x0000_3fff_ffff_ffffL;
   private static final long QUIET_NAN_MASK = 0xfdff_ffff_ffff_ffffL;
+  private static final ThreadLocal<FixedDivision> DIVISION =
+      ThreadLocal.withInitial(FixedDivision::new);
 
   private Bid128Divide() {
   }
@@ -62,50 +64,84 @@ public final class Bid128Divide {
     Objects.requireNonNull(y, "y");
     Objects.requireNonNull(roundingMode, "roundingMode");
     Objects.requireNonNull(flags, "flags");
+    long[] out = new long[2];
+    divide128(
+        x.highBits(),
+        x.lowBits(),
+        y.highBits(),
+        y.lowBits(),
+        roundingMode,
+        flags,
+        out);
+    return Bid128.fromRawBits(out[0], out[1]);
+  }
 
-    boolean negative = x.isSigned() ^ y.isSigned();
-    if (!x.isFinite()) {
-      if (y.isSignalingNaN()) {
+  static void divide128(
+      long xHighBits,
+      long xLowBits,
+      long yHighBits,
+      long yLowBits,
+      RoundingMode roundingMode,
+      StatusFlags flags,
+      long[] out) {
+    Objects.requireNonNull(roundingMode, "roundingMode");
+    Objects.requireNonNull(flags, "flags");
+    Objects.requireNonNull(out, "out");
+
+    boolean negative = ((xHighBits ^ yHighBits) & Bid128.MASK_SIGN) != 0L;
+    boolean xFinite = (xHighBits & Bid128.MASK_INFINITY) != Bid128.MASK_INFINITY;
+    boolean yFinite = (yHighBits & Bid128.MASK_INFINITY) != Bid128.MASK_INFINITY;
+    if (!xFinite) {
+      boolean ySignaling = isSignalingNaN(yHighBits);
+      if (ySignaling) {
         flags.raise(StatusFlags.INVALID);
       }
-      if (x.isNaN()) {
-        return quietNaN(x, x.isSignalingNaN(), flags);
+      if (isNaN(xHighBits)) {
+        quietNaN(xHighBits, xLowBits, isSignalingNaN(xHighBits), flags, out);
+        return;
       }
-      if (y.isNaN()) {
-        return quietNaN(y, y.isSignalingNaN(), flags);
+      if (isNaN(yHighBits)) {
+        quietNaN(yHighBits, yLowBits, ySignaling, flags, out);
+        return;
       }
-      if (y.isInfinite()) {
+      if (!yFinite) {
         flags.raise(StatusFlags.INVALID);
-        return Bid128.QUIET_NAN;
+        store(Bid128.MASK_NAN, 0L, out);
+        return;
       }
-      return infinity(negative);
+      infinity(negative, out);
+      return;
     }
-    if (!y.isFinite()) {
-      if (y.isNaN()) {
-        return quietNaN(y, y.isSignalingNaN(), flags);
+    if (!yFinite) {
+      if (isNaN(yHighBits)) {
+        quietNaN(yHighBits, yLowBits, isSignalingNaN(yHighBits), flags, out);
+        return;
       }
-      return signedZero(negative, 0);
+      signedZero(negative, 0, out);
+      return;
     }
 
-    long xBits = x.highBits();
-    long yBits = y.highBits();
-    boolean xCanonical = Bid128.isCanonicalFinite(xBits, x.lowBits());
-    boolean yCanonical = Bid128.isCanonicalFinite(yBits, y.lowBits());
-    long xHigh = xCanonical ? xBits & Bid128.MASK_COEFFICIENT : 0L;
-    long xLow = xCanonical ? x.lowBits() : 0L;
-    long yHigh = yCanonical ? yBits & Bid128.MASK_COEFFICIENT : 0L;
-    long yLow = yCanonical ? y.lowBits() : 0L;
-    int exponent = unpackedExponent(x) - unpackedExponent(y) + EXPONENT_BIAS;
+    boolean xCanonical = Bid128.isCanonicalFinite(xHighBits, xLowBits);
+    boolean yCanonical = Bid128.isCanonicalFinite(yHighBits, yLowBits);
+    long xHigh = xCanonical ? xHighBits & Bid128.MASK_COEFFICIENT : 0L;
+    long xLow = xCanonical ? xLowBits : 0L;
+    long yHigh = yCanonical ? yHighBits & Bid128.MASK_COEFFICIENT : 0L;
+    long yLow = yCanonical ? yLowBits : 0L;
+    int exponent =
+        unpackedExponent(xHighBits) - unpackedExponent(yHighBits) + EXPONENT_BIAS;
     if ((xHigh | xLow) == 0L) {
       if ((yHigh | yLow) == 0L) {
         flags.raise(StatusFlags.INVALID);
-        return Bid128.QUIET_NAN;
+        store(Bid128.MASK_NAN, 0L, out);
+        return;
       }
-      return signedZero(negative, clampExponent(exponent));
+      signedZero(negative, clampExponent(exponent), out);
+      return;
     }
     if ((yHigh | yLow) == 0L) {
       flags.raise(StatusFlags.DIVIDE_BY_ZERO);
-      return infinity(negative);
+      infinity(negative, out);
+      return;
     }
 
     int generated = decimalScale(xHigh, xLow, yHigh, yLow);
@@ -179,21 +215,21 @@ public final class Bid128Divide {
     }
     if (exponent > MAX_EXPONENT) {
       if ((scaled.quotientHigh | scaled.quotientLow) == 0L) {
-        return signedZero(negative, MAX_EXPONENT);
+        signedZero(negative, MAX_EXPONENT, out);
+        return;
       }
       flags.raise(StatusFlags.OVERFLOW | StatusFlags.INEXACT);
-      return overflowResult(negative, roundingMode);
+      overflowResult(negative, roundingMode, out);
+      return;
     }
-    return Bid128.rawFinite(
-        negative, exponent, scaled.quotientHigh, scaled.quotientLow);
+    finite(negative, exponent, scaled.quotientHigh, scaled.quotientLow, out);
   }
 
-  private static int unpackedExponent(Bid128 value) {
-    long high = value.highBits();
+  private static int unpackedExponent(long high) {
     if ((high & Bid128.MASK_STEERING_BITS) == Bid128.MASK_STEERING_BITS) {
       return (int) ((high >>> 47) & 0x3fffL);
     }
-    return value.biasedExponent();
+    return (int) ((high >>> 49) & 0x3fffL);
   }
 
   private static int decimalScale(
@@ -230,7 +266,8 @@ public final class Bid128Divide {
       long divisorHigh,
       long divisorLow,
       int scale) {
-    FixedDivision division = new FixedDivision(dividendHigh, dividendLow);
+    FixedDivision division = DIVISION.get();
+    division.reset(dividendHigh, dividendLow);
     division.multiplyPowerOfTen(scale);
     division.divide(divisorHigh, divisorLow);
     return division;
@@ -287,29 +324,47 @@ public final class Bid128Divide {
     }
   }
 
-  private static Bid128 quietNaN(Bid128 value, boolean signaling, StatusFlags flags) {
+  private static boolean isNaN(long high) {
+    return (high & Bid128.MASK_NAN) == Bid128.MASK_NAN;
+  }
+
+  private static boolean isSignalingNaN(long high) {
+    return (high & Bid128.MASK_SIGNALING_NAN) == Bid128.MASK_SIGNALING_NAN;
+  }
+
+  private static void quietNaN(
+      long highBits,
+      long lowBits,
+      boolean signaling,
+      StatusFlags flags,
+      long[] out) {
     if (signaling) {
       flags.raise(StatusFlags.INVALID);
     }
-    UInt128 payload = new UInt128(
-        value.highBits() & NAN_PAYLOAD_HIGH_MASK, value.lowBits());
-    if (payload.compareTo(MAX_NAN_PAYLOAD) > 0) {
-      payload = UInt128.ZERO;
+    long payloadHigh = highBits & NAN_PAYLOAD_HIGH_MASK;
+    long payloadLow = lowBits;
+    if (compare(
+        payloadHigh,
+        payloadLow,
+        MAX_NAN_PAYLOAD.high(),
+        MAX_NAN_PAYLOAD.low()) > 0) {
+      payloadHigh = 0L;
+      payloadLow = 0L;
     }
-    long high = (value.highBits() & (Bid128.MASK_SIGN | Bid128.MASK_NAN))
-        | payload.high();
-    return Bid128.fromRawBits(high & QUIET_NAN_MASK, payload.low());
+    long high = (highBits & (Bid128.MASK_SIGN | Bid128.MASK_NAN)) | payloadHigh;
+    store(high & QUIET_NAN_MASK, payloadLow, out);
   }
 
-  private static Bid128 signedZero(boolean negative, int exponent) {
-    return Bid128.finite(negative, exponent, 0, 0);
+  private static void signedZero(boolean negative, int exponent, long[] out) {
+    finite(negative, exponent, 0L, 0L, out);
   }
 
-  private static Bid128 infinity(boolean negative) {
-    return negative ? Bid128.NEGATIVE_INFINITY : Bid128.POSITIVE_INFINITY;
+  private static void infinity(boolean negative, long[] out) {
+    store((negative ? Bid128.MASK_SIGN : 0L) | Bid128.MASK_INFINITY, 0L, out);
   }
 
-  private static Bid128 overflowResult(boolean negative, RoundingMode mode) {
+  private static void overflowResult(
+      boolean negative, RoundingMode mode, long[] out) {
     boolean infinity;
     switch (mode) {
       case TIES_TO_EVEN:
@@ -328,10 +383,31 @@ public final class Bid128Divide {
       default:
         throw new AssertionError(mode);
     }
-    return infinity
-        ? infinity(negative)
-        : Bid128.finite(
-            negative, MAX_EXPONENT, MAX_COEFFICIENT.high(), MAX_COEFFICIENT.low());
+    if (infinity) {
+      infinity(negative, out);
+    } else {
+      finite(
+          negative,
+          MAX_EXPONENT,
+          MAX_COEFFICIENT.high(),
+          MAX_COEFFICIENT.low(),
+          out);
+    }
+  }
+
+  private static void finite(
+      boolean negative,
+      int exponent,
+      long coefficientHigh,
+      long coefficientLow,
+      long[] out) {
+    long sign = negative ? Bid128.MASK_SIGN : 0L;
+    store(sign | (long) exponent << 49 | coefficientHigh, coefficientLow, out);
+  }
+
+  private static void store(long high, long low, long[] out) {
+    out[0] = high;
+    out[1] = low;
   }
 
   private static int decimalDigits(long high, long low) {
@@ -399,9 +475,22 @@ public final class Bid128Divide {
     private boolean sticky;
     private boolean discardedInexact;
 
-    private FixedDivision(long high, long low) {
+    private FixedDivision() {
+    }
+
+    private void reset(long high, long low) {
+      limb4 = 0L;
+      limb3 = 0L;
+      limb2 = 0L;
       limb1 = high;
       limb0 = low;
+      quotientHigh = 0L;
+      quotientLow = 0L;
+      remainderHigh = 0L;
+      remainderLow = 0L;
+      roundDigit = 0;
+      sticky = false;
+      discardedInexact = false;
     }
 
     private void multiplyPowerOfTen(int scale) {

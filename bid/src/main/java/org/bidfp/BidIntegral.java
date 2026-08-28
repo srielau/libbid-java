@@ -9,6 +9,8 @@ package org.bidfp;
 
 /** Round-to-integral kernels for BID64 and BID128. */
 final class BidIntegral {
+  private static final long[][] POW10_128 = powersOfTen128();
+
   private BidIntegral() {
   }
 
@@ -30,24 +32,27 @@ final class BidIntegral {
       return Bid64.finiteRawBits(negative, exp + 398, coeff);
     }
     int places = -exp;
-    DecNum number = DecNum.ofCoefficient(negative, coeff, 0);
-    boolean[] sticky = {false};
-    StatusFlags local = new StatusFlags();
-    int first = number.dividePow10(places, sticky);
-    long kept = number.low64();
-    boolean inexact = first != 0 || sticky[0];
-    if (BidRound.shouldIncrement(negative, kept, first, sticky[0], mode)) {
-      number.addOne();
-      kept = number.low64();
+    long kept;
+    int first;
+    boolean sticky;
+    if (places < PowersOfTen.LONG.length) {
+      long divisor = PowersOfTen.LONG[places];
+      kept = coeff / divisor;
+      long remainder = coeff - kept * divisor;
+      long firstDivisor = PowersOfTen.LONG[places - 1];
+      first = (int) (remainder / firstDivisor);
+      sticky = remainder - first * firstDivisor != 0;
+    } else {
+      kept = 0L;
+      first = 0;
+      sticky = true;
     }
-    if (inexact) {
-      local.raise(StatusFlags.INEXACT);
+    boolean inexact = first != 0 || sticky;
+    if (BidRound.shouldIncrement(negative, kept, first, sticky, mode)) {
+      kept++;
     }
-    if (exact) {
-      flags.raise(local.bits());
-    }
-    if (number.isZero()) {
-      return Bid64.finiteRawBits(negative, 398, 0L);
+    if (exact && inexact) {
+      flags.raise(StatusFlags.INEXACT);
     }
     return Bid64.finiteRawBits(negative, 398, kept);
   }
@@ -73,28 +78,45 @@ final class BidIntegral {
       StatusFlags flags,
       boolean exact,
       long[] payloadOut) {
-    Bid128 value = Bid128.fromRawBits(high, low);
-    if (value.isNaN()) {
+    if ((high & Bid128.MASK_NAN) == Bid128.MASK_NAN) {
       canonicalizeNaN128(high, low, flags, payloadOut);
       return;
     }
-    if (value.isInfinite()) {
+    if ((high & Bid128.MASK_INFINITY) == Bid128.MASK_INFINITY) {
       payloadOut[0] = (high & Bid128.MASK_SIGN) | Bid128.MASK_INFINITY;
       payloadOut[1] = 0L;
       return;
     }
-    UInt128 coeff = value.coefficient();
-    int exp = value.biasedExponent() - 6176;
-    boolean negative = value.isSigned();
-    if (coeff.isZero()) {
-      int biased = Math.max(exp, 0) + 6176;
-      DecNum.store128(Bid128.finite(negative, biased, 0L, 0L), payloadOut);
+    boolean negative = (high & Bid128.MASK_SIGN) != 0L;
+    int biased = (high & Bid128.MASK_STEERING_BITS) == Bid128.MASK_STEERING_BITS
+        ? (int) ((high >>> 47) & 0x3fffL)
+        : (int) ((high & Bid128.MASK_EXPONENT) >>> 49);
+    long coeffHigh = high & Bid128.MASK_COEFFICIENT;
+    long coeffLow = low;
+    if (!Bid128.isCanonicalFinite(high, low)) {
+      coeffHigh = 0L;
+      coeffLow = 0L;
+    }
+    int exp = biased - 6176;
+    if ((coeffHigh | coeffLow) == 0L) {
+      int resultBiased = Math.max(exp, 0) + 6176;
+      payloadOut[0] = (negative ? Bid128.MASK_SIGN : 0L)
+          | ((long) resultBiased << 49);
+      payloadOut[1] = 0L;
       return;
     }
     if (exp >= 0) {
-      DecNum.store128(value, payloadOut);
+      payloadOut[0] = high;
+      payloadOut[1] = low;
       return;
     }
+    int places = -exp;
+    if (roundSmall128(
+        coeffHigh, coeffLow, places, negative, mode, flags, exact, payloadOut)) {
+      return;
+    }
+    Bid128 value = Bid128.fromRawBits(high, low);
+    UInt128 coeff = value.coefficient();
     DecNum number = DecNum.ofUnsigned(coeff.high(), coeff.low());
     if (negative) {
       number.setNegative();
@@ -113,6 +135,94 @@ final class BidIntegral {
     DecNum.store128(
         Bid128.finite(negative, 6176, rounded.high(), rounded.low()),
         payloadOut);
+  }
+
+  private static boolean roundSmall128(
+      long coefficientHigh,
+      long coefficientLow,
+      int places,
+      boolean negative,
+      RoundingMode mode,
+      StatusFlags flags,
+      boolean exact,
+      long[] out) {
+    if (places > 34) {
+      storeRoundedSmall128(negative, 0L, 0, true, mode, flags, exact, out);
+      return true;
+    }
+    if (places < 34
+        && compare128(
+            coefficientHigh,
+            coefficientLow,
+            POW10_128[places + 1][0],
+            POW10_128[places + 1][1]) >= 0) {
+      return false;
+    }
+
+    long remainderHigh = coefficientHigh;
+    long remainderLow = coefficientLow;
+    long divisorHigh = POW10_128[places][0];
+    long divisorLow = POW10_128[places][1];
+    long kept = 0L;
+    while (compare128(remainderHigh, remainderLow, divisorHigh, divisorLow) >= 0) {
+      long nextLow = remainderLow - divisorLow;
+      long borrow = Long.compareUnsigned(remainderLow, divisorLow) < 0 ? 1L : 0L;
+      remainderHigh = remainderHigh - divisorHigh - borrow;
+      remainderLow = nextLow;
+      kept++;
+    }
+
+    long firstHigh = POW10_128[places - 1][0];
+    long firstLow = POW10_128[places - 1][1];
+    int first = 0;
+    while (compare128(remainderHigh, remainderLow, firstHigh, firstLow) >= 0) {
+      long nextLow = remainderLow - firstLow;
+      long borrow = Long.compareUnsigned(remainderLow, firstLow) < 0 ? 1L : 0L;
+      remainderHigh = remainderHigh - firstHigh - borrow;
+      remainderLow = nextLow;
+      first++;
+    }
+    boolean sticky = (remainderHigh | remainderLow) != 0L;
+    storeRoundedSmall128(negative, kept, first, sticky, mode, flags, exact, out);
+    return true;
+  }
+
+  private static void storeRoundedSmall128(
+      boolean negative,
+      long kept,
+      int first,
+      boolean sticky,
+      RoundingMode mode,
+      StatusFlags flags,
+      boolean exact,
+      long[] out) {
+    boolean inexact = first != 0 || sticky;
+    if (BidRound.shouldIncrement(negative, kept, first, sticky, mode)) {
+      kept++;
+    }
+    if (exact && inexact) {
+      flags.raise(StatusFlags.INEXACT);
+    }
+    out[0] = (negative ? Bid128.MASK_SIGN : 0L) | (6176L << 49);
+    out[1] = kept;
+  }
+
+  private static int compare128(
+      long high, long low, long otherHigh, long otherLow) {
+    int highComparison = Long.compareUnsigned(high, otherHigh);
+    return highComparison != 0
+        ? highComparison
+        : Long.compareUnsigned(low, otherLow);
+  }
+
+  private static long[][] powersOfTen128() {
+    long[][] powers = new long[35][2];
+    for (int i = 0; i < powers.length; i++) {
+      UInt128 value = PowersOfTen.pow10(i);
+      powers[i][0] = value.high();
+      powers[i][1] = value.low();
+    }
+    return powers;
   }
 
   static void canonicalizeNaN128(

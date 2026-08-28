@@ -98,30 +98,40 @@ parameters, a complete run produces 216 benchmark cases.
 
 ## Select benchmarks
 
-JMH method and parameter filters are useful while iterating:
+Do not start with `full` on the whole suite. A complete full run is about 200
+cases and takes on the order of an hour. Iterate with a filter, then capture a
+full baseline only for the methods you still care about.
 
 ```bash
-java -jar bid/target/benchmarks.jar \
-  'org\.bidfp\.BidJmhBenchmark\.(bid64Subtract|bid64RawSubtract|bigDecimal64Subtract)'
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 
-java -jar bid/target/benchmarks.jar \
-  'org\.bidfp\.BidTranscendentalJmhBenchmark\.(bid64Object|bid64Raw)' \
-  -p operation=log
+# Same JVM, 200ms slices, reuse the JAR. Seconds, not hours.
+benchmarks/run.sh iter BidJmhBenchmark.bid64Add
+benchmarks/run.sh iter BidJmhBenchmark -p workload=fullPrecision
+benchmarks/run.sh iter BidTranscendentalJmhBenchmark -p operation=log
+
+# Confirm a slice with one fork before a baseline.
+benchmarks/run.sh quick BidJmhBenchmark.bid64
 ```
 
-`benchmarks/run.sh` selects every `org.bidfp` class whose name ends in
-`JmhBenchmark`.
+`iter` skips Maven when `bid/target/benchmarks.jar` already exists. Pass
+`--rebuild` after kernel changes. Pass `--gc` if you need allocation numbers
+on an `iter` run; `quick` and `full` enable the GC profiler by default.
+
+The include argument is a JMH regex matched against the fully qualified method
+name, so `Bid64Add` is enough for one method and `BidTranscendental` is enough
+for that class.
 
 ## Capture a baseline
 
 Use the same otherwise-idle host, JDK, CPU governor, and JVM options for every
-run. The quick profile is for iteration; the full profile is the optimization
-baseline.
+run. `iter` is for local loops, `quick` is a one-fork check, and `full` is the
+optimization baseline.
 
 ```bash
 export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-benchmarks/run.sh quick
-benchmarks/run.sh full
+benchmarks/run.sh quick BidJmhBenchmark
+benchmarks/run.sh full BidJmhBenchmark
 ```
 
 Each run creates a timestamped directory under `benchmark-results/` containing:

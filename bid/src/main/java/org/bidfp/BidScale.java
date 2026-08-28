@@ -63,24 +63,39 @@ final class BidScale {
       return (x & Bid64.MASK_SIGN) | Bid64.MASK_INFINITY;
     }
     long coeff = Bid64.significandBits(x);
-    int exp = Bid64.biasedExponentBits(x) - 398;
-    int scaledExp = clamp((long) exp + n, -1_000, 1_000);
+    int biased = Bid64.biasedExponentBits(x);
+    long scaledBiased = (long) biased + n;
+    if (scaledBiased >= 0 && scaledBiased <= 767) {
+      return Bid64.finiteRawBits(
+          Bid64Raw.isSigned(x), (int) scaledBiased, coeff);
+    }
+    int scaledExp = clamp(scaledBiased - 398, -1_000, 1_000);
     DecNum number = DecNum.ofCoefficient(Bid64Raw.isSigned(x), coeff, scaledExp);
     return number.packBid64(mode, flags);
   }
 
   static void scalbn128(
       long high, long low, int n, RoundingMode mode, StatusFlags flags, long[] out) {
-    Bid128 value = Bid128.fromRawBits(high, low);
-    if (value.isNaN()) {
+    if ((high & Bid128.MASK_NAN) == Bid128.MASK_NAN) {
       BidIntegral.canonicalizeNaN128(high, low, flags, out);
       return;
     }
-    if (value.isInfinite()) {
+    if ((high & Bid128.MASK_INFINITY) == Bid128.MASK_INFINITY) {
       out[0] = (high & Bid128.MASK_SIGN) | Bid128.MASK_INFINITY;
       out[1] = 0L;
       return;
     }
+    int biased = (int) ((high & Bid128.MASK_EXPONENT) >>> 49);
+    long scaledBiased = (long) biased + n;
+    if (scaledBiased >= 0
+        && scaledBiased <= 12_287
+        && Bid128.isCanonicalFinite(high, low)) {
+      out[0] = (high & (Bid128.MASK_SIGN | Bid128.MASK_COEFFICIENT))
+          | (scaledBiased << 49);
+      out[1] = low;
+      return;
+    }
+    Bid128 value = Bid128.fromRawBits(high, low);
     UInt128 coeff = value.coefficient();
     int exp = clamp((long) value.biasedExponent() - 6176 + n, -13_000, 13_000);
     DecNum number = DecNum.ofUnsigned(coeff.high(), coeff.low());

@@ -25,6 +25,12 @@ final class Bid64Pow {
   }
 
   static long pow(long x, long y, RoundingMode mode, StatusFlags flags) {
+    int smallExponent = smallPositiveInteger(y);
+    if (smallExponent >= 2
+        && Bid64Raw.isFinite(x)
+        && !Bid64Raw.isZero(x)) {
+      return powSmallInteger(x, smallExponent, mode, flags);
+    }
     Bid64 bx = Bid64.fromRawBits(x);
     Bid64 by = Bid64.fromRawBits(y);
     if (bx.isSignalingNaN() || by.isSignalingNaN()) {
@@ -149,5 +155,28 @@ final class Bid64Pow {
       result ^= Bid64.MASK_SIGN;
     }
     return result;
+  }
+
+  private static int smallPositiveInteger(long value) {
+    if (!Bid64Raw.isFinite(value)
+        || Bid64.biasedExponentBits(value) != 398
+        || Bid64Raw.isSigned(value)) {
+      return -1;
+    }
+    long coefficient = Bid64.significandBits(value);
+    return coefficient >= 2L && coefficient <= 5L ? (int) coefficient : -1;
+  }
+
+  private static long powSmallInteger(
+      long value, int exponent, RoundingMode mode, StatusFlags flags) {
+    long square = Bid64Raw.mul(value, value, mode, flags);
+    if (exponent == 2) {
+      return square;
+    }
+    if (exponent == 3) {
+      return Bid64Raw.mul(square, value, mode, flags);
+    }
+    long fourth = Bid64Raw.mul(square, square, mode, flags);
+    return exponent == 4 ? fourth : Bid64Raw.mul(fourth, value, mode, flags);
   }
 }

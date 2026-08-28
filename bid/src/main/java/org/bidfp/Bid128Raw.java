@@ -109,10 +109,7 @@ public final class Bid128Raw {
 
   public static void div(
       long xh, long xl, long yh, long yl, RoundingMode mode, StatusFlags flags, long[] out) {
-    DecNum.store128(
-        Bid128Divide.divide(
-            Bid128.fromRawBits(xh, xl), Bid128.fromRawBits(yh, yl), mode, flags),
-        out);
+    Bid128Divide.divide128(xh, xl, yh, yl, mode, flags, out);
   }
 
   public static void add(
