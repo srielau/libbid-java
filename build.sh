@@ -11,11 +11,13 @@ rm -rf "$ROOT/target"
 mkdir -p "$OUT"
 
 mapfile -t SOURCES < <(
-  find "$ROOT/src/main/java" "$ROOT/src/test/java" -name '*.java' \
-    ! -name 'LibraryTests.java' | sort
+  find "$ROOT/binary128/src/main/java" "$ROOT/binary128/src/test/java" \
+       "$ROOT/bid/src/main/java" "$ROOT/bid/src/test/java" \
+       -name '*.java' ! -name 'LibraryTests.java' ! -name 'Binary128Test.java' | sort
 )
 
 "$JAVAC" --release 17 -Werror -Xlint:all -d "$OUT" "${SOURCES[@]}"
+"$JAVA" -ea -cp "$OUT" org.bidfp.binary128.Binary128Check
 for test_class in \
     Bid64Test \
     Bid64IntelVectorTest \
@@ -29,6 +31,16 @@ for test_class in \
     Bid128AddTest \
     Bid128MultiplyTest \
     Bid128DivideTest \
-    UInt128Test; do
+    UInt128Test \
+    BidRawApiTest \
+    BidComparisonVectorTest \
+    BidRoundingVectorTest \
+    BidScaleVectorTest \
+    BidNextMinMaxVectorTest \
+    BidFmaRemVectorTest \
+    BidDpdVectorTest \
+    BidIntegerVectorTest \
+    BidMiscVectorTest \
+    BidUtilityVectorTest; do
   "$JAVA" -ea -cp "$OUT" "org.bidfp.$test_class"
 done

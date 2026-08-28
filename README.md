@@ -16,12 +16,28 @@ and tests are Apache License 2.0. Keep `LICENSE`, `LICENSE-INTEL`, and
 
 - Representation, classification, canonicality, sign ops
 - Quiet/signaling comparisons, `totalOrder`, `sameQuantum`
-- Add, subtract, multiply, divide (five IEEE rounding modes, status flags)
-- Exact string conversion
-- Intel `TESTS/readtest.in` vectors for BID64 and BID128
+- Add, subtract, multiply, divide, FMA, remainder, sqrt, quantize, scale
+- Round-to-integral, nextUp/nextDown, minnum/maxnum
+- String, integer, binary32/64, and BID64<->BID128 conversion
+- DPD encode/decode (BID64 and BID128)
+- Intel `readtest.in` coverage for the core BID64/BID128 operation families above
+- Provisional transcendentals via binary64 evaluation; these do not meet Intel
+  DPML precision or flag semantics and are not part of the conformant core
+- DBR adapters: Compare/Equals, Sign, RoundToScale, Canonicalize, Decimal
+- Dual API: `Bid64`/`Bid128` objects and `Bid64Raw`/`Bid128Raw`, plus
+  `DecFloat16Compat`/`DecFloat34Compat` JNI-shaped methods
 
-Not in this release: BID32, BID256, FMA, sqrt, quantize, transcendentals,
-global rounding/flag modes.
+This git tree publishes two JARs:
+
+- `org.bidfp:libbid-java` (`bid/`) - BID64/BID128
+- `org.bidfp:binary128` (`binary128/`) - packed binary128; DPML kernels TBD
+
+Spark should depend on `libbid-java` (it pulls `binary128`). DPML port
+instructions: `binary128/AGENTS.md`.
+
+Not in this release: BID32, BID256, binary80, mixed-width arithmetic,
+global rounding/flag modes. Packed `Binary128` exists; DPML libm and
+BID <-> binary128 convert are the remaining transcendental gap.
 
 ## Build and test
 
@@ -42,7 +58,7 @@ mvn test
 
 ```bash
 mvn -Pjmh clean package
-$JAVA_HOME/bin/java -jar target/benchmarks.jar '.*BidJmhBenchmark.*'
+$JAVA_HOME/bin/java -jar bid/target/benchmarks.jar '.*BidJmhBenchmark.*'
 ```
 
 Workloads compare BID64/BID128 with `MathContext.DECIMAL64` /
