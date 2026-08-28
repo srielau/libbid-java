@@ -28,87 +28,20 @@
  */
 package org.bidfp;
 
-import java.io.IOException;
 import java.math.BigInteger;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.List;
 import java.util.Random;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
-/** Intel-vector, special-value, and finite-oracle tests for {@link Bid64Add}. */
+/** Special-value and finite-oracle tests for {@link Bid64Add}. */
 public final class Bid64AddTest {
-  private static final Pattern RAW_VECTOR = Pattern.compile(
-      "^bid64_(add|sub) ([0-4]) \\[([0-9a-fA-F]{16})\\] "
-          + "\\[([0-9a-fA-F]{16})\\] \\[([0-9a-fA-F]{16})\\] ([0-9a-fA-F]{2})$");
-  private static final RoundingMode[] INTEL_ROUNDING_MODES = {
-    RoundingMode.TIES_TO_EVEN,
-    RoundingMode.TOWARD_NEGATIVE,
-    RoundingMode.TOWARD_POSITIVE,
-    RoundingMode.TOWARD_ZERO,
-    RoundingMode.TIES_AWAY
-  };
-
   private Bid64AddTest() {
   }
 
-  public static void main(String[] args) throws IOException {
-    testIntelRawVectors();
+  public static void main(String[] args) {
     testSpecialValues();
     testSignedZeros();
     testExactFiniteOracle();
     testFlagsAccumulate();
     System.out.println("Bid64AddTest: all tests passed");
-  }
-
-  private static void testIntelRawVectors() throws IOException {
-    List<String> lines = Files.readAllLines(findVectors());
-    int additions = 0;
-    int subtractions = 0;
-    for (String line : lines) {
-      Matcher matcher = RAW_VECTOR.matcher(line);
-      if (!matcher.matches()) {
-        continue;
-      }
-      boolean subtract = matcher.group(1).equals("sub");
-      RoundingMode mode = INTEL_ROUNDING_MODES[Integer.parseInt(matcher.group(2))];
-      Bid64 x = Bid64.fromRawBits(Long.parseUnsignedLong(matcher.group(3), 16));
-      Bid64 y = Bid64.fromRawBits(Long.parseUnsignedLong(matcher.group(4), 16));
-      long expected = Long.parseUnsignedLong(matcher.group(5), 16);
-      int expectedFlags = Integer.parseInt(matcher.group(6), 16);
-      StatusFlags flags = new StatusFlags();
-      Bid64 result = subtract
-          ? Bid64Add.subtract(x, y, mode, flags)
-          : Bid64Add.add(x, y, mode, flags);
-      if (result.toRawBits() != expected || flags.bits() != expectedFlags) {
-        throw new AssertionError(String.format(
-            "vector %s: expected [0x%016x] %02x, actual [0x%016x] %02x",
-            line, expected, expectedFlags, result.toRawBits(), flags.bits()));
-      }
-      if (subtract) {
-        subtractions++;
-      } else {
-        additions++;
-      }
-    }
-    if (additions != 95 || subtractions != 54) {
-      throw new AssertionError(
-          "expected 95 add and 54 subtract vectors, tested "
-              + additions + " and " + subtractions);
-    }
-  }
-
-  private static Path findVectors() {
-    Path directory = Path.of("").toAbsolutePath();
-    while (directory != null) {
-      Path candidate = directory.resolve("upstream/TESTS/readtest.in");
-      if (Files.isRegularFile(candidate)) {
-        return candidate;
-      }
-      directory = directory.getParent();
-    }
-    throw new AssertionError("cannot locate upstream/TESTS/readtest.in");
   }
 
   private static void testSpecialValues() {

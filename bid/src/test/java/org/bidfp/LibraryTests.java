@@ -42,6 +42,11 @@ class LibraryTests {
   }
 
   @Test
+  void bidArithmeticVectors() throws IOException {
+    BidArithmeticVectorTest.main(new String[0]);
+  }
+
+  @Test
   void bid64RawKernel() {
     Bid64RawKernelTest.main(new String[0]);
   }

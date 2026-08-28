@@ -6,7 +6,16 @@ Floating-Point Math Library (Intel RDFP Math Library 2.0 Update 4).
 They are the correctness oracle for BID64 and BID128 in this Java port.
 
 The original C library is not vendored in this repository. Obtain it from
-Intel if you need the C sources:
+Intel if you need the C sources, then run the optional native oracle:
+
+```
+INTEL_RDFP_HOME=/path/to/IntelRDFPMathLib20U4 ./dev/run_intel_readtest.sh
+```
+
+That builds Intel `LIBRARY` and `TESTS/readtest` with
+`CALL_BY_REF=0 GLOBAL_RND=0 GLOBAL_FLAGS=0` and feeds this repo's
+`TESTS/readtest.in`. It is skipped unless `INTEL_RDFP_HOME` is set.
+JUnit test `IntelNativeReadtestTest` uses the same gate.
 
 https://www.intel.com/content/www/us/en/developer/articles/tool/intel-decimal-floating-point-math-library.html
 

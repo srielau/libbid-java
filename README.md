@@ -22,6 +22,8 @@ and tests are Apache License 2.0. Keep `LICENSE`, `LICENSE-INTEL`, and
 - DPD encode/decode (BID64 and BID128)
 - Intel `readtest.in` coverage for the core BID64/BID128 operation families above
   plus exact-bit BID<->binary128 convert (6664 vectors)
+- Add/sub/mul/div: every named BID64/BID128 line in `readtest.in` (2461), hex
+  and decimal-text operands, bit and flag equality, object API vs raw kernel
 - Transcendentals: convert to binary128, DPML kernel, convert back, plus Intel
   wrapper specials (exp clamps, near-1 log, Payne-Hanek trig, hypot, domain).
   `BidTranscendentalVectorTest` passes all 5448 Intel libm vectors using
@@ -61,17 +63,23 @@ library keeps both explicit. Use `toLong`, `toFloat`, `toDouble`, or
 
 ## Build and test
 
-Java 17+:
+Java 17+ and Maven. The default gate is `mvn test` (also `./build.sh`).
+That runs JUnit 5 in both modules, including binary128 DPML oracles and
+`Bid128TgammaBoundaryTest`. GitHub Actions runs the same command.
 
 ```bash
 export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64   # if needed
-./build.sh
+mvn test
+# or: ./build.sh
 ```
 
-Or with Maven:
+`./build.sh javac` is a Maven-free smoke path: it compiles with `javac` and
+runs the `main()` suites only (no JUnit 5).
+
+Optional native second oracle (Intel C `readtest` vs `upstream/TESTS/readtest.in`):
 
 ```bash
-mvn test
+INTEL_RDFP_HOME=/path/to/IntelRDFPMathLib20U4 ./dev/run_intel_readtest.sh
 ```
 
 ## JMH (optional)

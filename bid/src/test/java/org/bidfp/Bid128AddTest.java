@@ -28,91 +28,24 @@
  */
 package org.bidfp;
 
-import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.MathContext;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.List;
 import java.util.Random;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
-/** Intel-vector, special-value, and finite-oracle tests for {@link Bid128Add}. */
+/** Special-value and finite-oracle tests for {@link Bid128Add}. */
 public final class Bid128AddTest {
-  private static final Pattern RAW_VECTOR = Pattern.compile(
-      "^bid128_(add|sub) ([0-4]) "
-          + "\\[([0-9a-fA-F]{16}),([0-9a-fA-F]{16})\\] "
-          + "\\[([0-9a-fA-F]{16}),([0-9a-fA-F]{16})\\] "
-          + "\\[([0-9a-fA-F]{16})([0-9a-fA-F]{16})\\] ([0-9a-fA-F]{2})$");
-  private static final RoundingMode[] INTEL_ROUNDING_MODES = {
-    RoundingMode.TIES_TO_EVEN,
-    RoundingMode.TOWARD_NEGATIVE,
-    RoundingMode.TOWARD_POSITIVE,
-    RoundingMode.TOWARD_ZERO,
-    RoundingMode.TIES_AWAY
-  };
-
   private Bid128AddTest() {
   }
 
-  public static void main(String[] args) throws IOException {
-    testIntelRawVectors();
+  public static void main(String[] args) {
     testSpecialValues();
     testSignedZeros();
     testExactFiniteOracle();
     testUnequalExponentDifferential();
     testFlagsAccumulate();
     System.out.println(
-        "Bid128AddTest: all tests passed (315 Intel vectors, 10000 differential cases)");
-  }
-
-  private static void testIntelRawVectors() throws IOException {
-    List<String> lines = Files.readAllLines(findVectors());
-    int additions = 0;
-    int subtractions = 0;
-    for (String line : lines) {
-      Matcher matcher = RAW_VECTOR.matcher(line);
-      if (!matcher.matches()) {
-        continue;
-      }
-      boolean subtract = matcher.group(1).equals("sub");
-      RoundingMode mode = INTEL_ROUNDING_MODES[Integer.parseInt(matcher.group(2))];
-      Bid128 x = Bid128.fromRawBits(bits(matcher.group(3)), bits(matcher.group(4)));
-      Bid128 y = Bid128.fromRawBits(bits(matcher.group(5)), bits(matcher.group(6)));
-      long expectedHigh = bits(matcher.group(7));
-      long expectedLow = bits(matcher.group(8));
-      int expectedFlags = Integer.parseInt(matcher.group(9), 16);
-      StatusFlags flags = new StatusFlags();
-      Bid128 result = subtract
-          ? Bid128Add.subtract(x, y, mode, flags)
-          : Bid128Add.add(x, y, mode, flags);
-      if (result.highBits() != expectedHigh
-          || result.lowBits() != expectedLow
-          || flags.bits() != expectedFlags) {
-        throw new AssertionError(String.format(
-            "vector %s:%nexpected [0x%016x%016x] %02x,%n"
-                + "actual   [0x%016x%016x] %02x",
-            line,
-            expectedHigh,
-            expectedLow,
-            expectedFlags,
-            result.highBits(),
-            result.lowBits(),
-            flags.bits()));
-      }
-      if (subtract) {
-        subtractions++;
-      } else {
-        additions++;
-      }
-    }
-    if (additions != 198 || subtractions != 117) {
-      throw new AssertionError(
-          "expected 198 add and 117 subtract raw vectors, tested "
-              + additions + " and " + subtractions);
-    }
+        "Bid128AddTest: all tests passed (10000 differential cases)");
   }
 
   private static void testSpecialValues() {
@@ -304,21 +237,5 @@ public final class Bid128AddTest {
           result,
           flags.bits()));
     }
-  }
-
-  private static Path findVectors() {
-    Path directory = Path.of("").toAbsolutePath();
-    while (directory != null) {
-      Path candidate = directory.resolve("upstream/TESTS/readtest.in");
-      if (Files.isRegularFile(candidate)) {
-        return candidate;
-      }
-      directory = directory.getParent();
-    }
-    throw new AssertionError("cannot locate upstream/TESTS/readtest.in");
-  }
-
-  private static long bits(String value) {
-    return Long.parseUnsignedLong(value, 16);
   }
 }

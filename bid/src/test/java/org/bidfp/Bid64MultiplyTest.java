@@ -26,82 +26,46 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
+/*
+ * Copyright (c) 2007-2025, Intel Corp.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
+ *
+ *   * Redistributions of source code must retain the above copyright notice,
+ *     this list of conditions and the following disclaimer.
+ *   * Redistributions in binary form must reproduce the above copyright notice,
+ *     this list of conditions and the following disclaimer in the documentation
+ *     and/or other materials provided with the distribution.
+ *   * Neither the name of Intel Corporation nor the names of its contributors may
+ *     be used to endorse or promote products derived from this software without
+ *     specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+ * THE POSSIBILITY OF SUCH DAMAGE.
+ */
 package org.bidfp;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
-/** Intel-vector and boundary tests for {@link Bid64Multiply}. */
+/** Special-value and boundary tests for {@link Bid64Multiply}. */
 public final class Bid64MultiplyTest {
-  private static final Pattern RAW_VECTOR = Pattern.compile(
-      "^bid64_mul ([0-4]) \\[([0-9a-fA-F]{16})\\] \\[([0-9a-fA-F]{16})\\] "
-          + "\\[([0-9a-fA-F]{16})\\] ([0-9a-fA-F]{2})$");
-  private static final RoundingMode[] INTEL_ROUNDING_MODES = {
-    RoundingMode.TIES_TO_EVEN,
-    RoundingMode.TOWARD_NEGATIVE,
-    RoundingMode.TOWARD_POSITIVE,
-    RoundingMode.TOWARD_ZERO,
-    RoundingMode.TIES_AWAY
-  };
-
   private Bid64MultiplyTest() {
   }
 
-  public static void main(String[] args) throws IOException {
-    testIntelRawVectors();
+  public static void main(String[] args) {
     testSpecialValues();
     testExactFiniteValues();
     testFlagsAccumulate();
     System.out.println("Bid64MultiplyTest: all tests passed");
-  }
-
-  private static void testIntelRawVectors() throws IOException {
-    Path vectors = findVectors();
-    List<String> lines = Files.readAllLines(vectors);
-    int tested = 0;
-    for (String line : lines) {
-      Matcher matcher = RAW_VECTOR.matcher(line);
-      if (!matcher.matches()) {
-        continue;
-      }
-      int mode = Integer.parseInt(matcher.group(1));
-      long x = Long.parseUnsignedLong(matcher.group(2), 16);
-      long y = Long.parseUnsignedLong(matcher.group(3), 16);
-      long expected = Long.parseUnsignedLong(matcher.group(4), 16);
-      int expectedFlags = Integer.parseInt(matcher.group(5), 16);
-
-      StatusFlags flags = new StatusFlags();
-      long actual = Bid64Multiply.multiply(
-          Bid64.fromRawBits(x),
-          Bid64.fromRawBits(y),
-          INTEL_ROUNDING_MODES[mode],
-          flags).toRawBits();
-      if (actual != expected || flags.bits() != expectedFlags) {
-        throw new AssertionError(String.format(
-            "vector %s: expected [0x%016x] %02x, actual [0x%016x] %02x",
-            line, expected, expectedFlags, actual, flags.bits()));
-      }
-      tested++;
-    }
-    if (tested != 136) {
-      throw new AssertionError("expected 136 raw Intel vectors, tested " + tested);
-    }
-  }
-
-  private static Path findVectors() {
-    Path directory = Path.of("").toAbsolutePath();
-    while (directory != null) {
-      Path candidate = directory.resolve("upstream/TESTS/readtest.in");
-      if (Files.isRegularFile(candidate)) {
-        return candidate;
-      }
-      directory = directory.getParent();
-    }
-    throw new AssertionError("cannot locate upstream/TESTS/readtest.in");
   }
 
   private static void testSpecialValues() {

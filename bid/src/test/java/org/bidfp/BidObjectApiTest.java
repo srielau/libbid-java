@@ -22,6 +22,7 @@ public final class BidObjectApiTest {
   public static void main(String[] args) {
     testBid64();
     testBid128();
+    testArithmeticParity();
     testTranscendentalParity();
     testCompatStatus();
     System.out.println("BidObjectApiTest: all tests passed");
@@ -149,6 +150,87 @@ public final class BidObjectApiTest {
     check(Bid128.QUIET_NAN.quietNotLess(x, flags), "notLess128");
   }
 
+  private static void testArithmeticParity() {
+    Bid64[] samples64 = {
+        Bid64.parseExact("0"),
+        Bid64.parseExact("0.5"),
+        Bid64.parseExact("1"),
+        Bid64.parseExact("12.75"),
+        Bid64.parseExact("-2.5"),
+        Bid64.POSITIVE_INFINITY,
+        Bid64.NEGATIVE_INFINITY,
+        Bid64.QUIET_NAN,
+        Bid64.SIGNALING_NAN,
+        Bid64.POSITIVE_ZERO,
+        Bid64.NEGATIVE_ZERO
+    };
+    Bid128[] samples128 = {
+        Bid128.parseExact("0"),
+        Bid128.parseExact("0.5"),
+        Bid128.parseExact("1"),
+        Bid128.parseExact("12.75"),
+        Bid128.parseExact("-2.5"),
+        Bid128.POSITIVE_INFINITY,
+        Bid128.NEGATIVE_INFINITY,
+        Bid128.QUIET_NAN,
+        Bid128.SIGNALING_NAN,
+        Bid128.POSITIVE_ZERO,
+        Bid128.NEGATIVE_ZERO
+    };
+    Bid64[] rhs64 = {
+        Bid64.parseExact("1"),
+        Bid64.parseExact("2.5"),
+        Bid64.parseExact("-1"),
+        Bid64.POSITIVE_ZERO,
+        Bid64.POSITIVE_INFINITY,
+        Bid64.QUIET_NAN
+    };
+    Bid128[] rhs128 = {
+        Bid128.parseExact("1"),
+        Bid128.parseExact("2.5"),
+        Bid128.parseExact("-1"),
+        Bid128.POSITIVE_ZERO,
+        Bid128.POSITIVE_INFINITY,
+        Bid128.QUIET_NAN
+    };
+    for (RoundingMode mode : MODES) {
+      for (Bid64 x : samples64) {
+        checkUnaryRounded64("sqrt", x, mode);
+        checkUnaryRounded64("cbrt", x, mode);
+        checkNext64(x);
+        checkRound64(x, mode);
+        for (Bid64 y : rhs64) {
+          checkBinaryRounded64("add", "add", x, y, mode);
+          checkBinaryRounded64("subtract", "sub", x, y, mode);
+          checkBinaryRounded64("multiply", "mul", x, y, mode);
+          checkBinaryRounded64("divide", "div", x, y, mode);
+          checkBinaryFlags64("remainder", "rem", x, y);
+          checkBinaryFlags64("fmod", "fmod", x, y);
+          checkFma64(x, y, y, mode);
+          checkQuantize64(x, y, mode);
+          checkFdim64(x, y, mode);
+        }
+      }
+      for (Bid128 x : samples128) {
+        checkUnaryRounded128("sqrt", x, mode);
+        checkUnaryRounded128("cbrt", x, mode);
+        checkNext128(x);
+        checkRound128(x, mode);
+        for (Bid128 y : rhs128) {
+          checkBinaryRounded128("add", "add", x, y, mode);
+          checkBinaryRounded128("subtract", "sub", x, y, mode);
+          checkBinaryRounded128("multiply", "mul", x, y, mode);
+          checkBinaryRounded128("divide", "div", x, y, mode);
+          checkBinaryFlags128("remainder", "rem", x, y);
+          checkBinaryFlags128("fmod", "fmod", x, y);
+          checkFma128(x, y, y, mode);
+          checkQuantize128(x, y, mode);
+          checkFdim128(x, y, mode);
+        }
+      }
+    }
+  }
+
   private static void testTranscendentalParity() {
     Bid64[] samples64 = {
         Bid64.parseExact("0"),
@@ -216,6 +298,271 @@ public final class BidObjectApiTest {
         }
       }
     }
+  }
+
+  private static void checkUnaryRounded64(String name, Bid64 x, RoundingMode mode) {
+    checkUnary64(name, x, mode);
+  }
+
+  private static void checkUnaryRounded128(String name, Bid128 x, RoundingMode mode) {
+    checkUnary128(name, x, mode);
+  }
+
+  private static void checkBinaryRounded64(
+      String objectName, String rawName, Bid64 left, Bid64 right, RoundingMode mode) {
+    try {
+      Method object = Bid64.class.getMethod(
+          objectName, Bid64.class, RoundingMode.class, StatusFlags.class);
+      Method raw = Bid64Raw.class.getMethod(
+          rawName, long.class, long.class, RoundingMode.class, StatusFlags.class);
+      StatusFlags objectFlags = new StatusFlags();
+      StatusFlags rawFlags = new StatusFlags();
+      Bid64 objectResult = (Bid64) object.invoke(left, right, mode, objectFlags);
+      long rawResult = (Long) raw.invoke(
+          null, left.toRawBits(), right.toRawBits(), mode, rawFlags);
+      check(
+          objectResult.toRawBits() == rawResult,
+          "arith64Bits:" + objectName);
+      check(objectFlags.bits() == rawFlags.bits(), "arith64Flags:" + objectName);
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError("arith64:" + objectName, e);
+    }
+  }
+
+  private static void checkBinaryRounded128(
+      String objectName, String rawName, Bid128 left, Bid128 right, RoundingMode mode) {
+    try {
+      Method object = Bid128.class.getMethod(
+          objectName, Bid128.class, RoundingMode.class, StatusFlags.class);
+      Method raw = Bid128Raw.class.getMethod(
+          rawName,
+          long.class,
+          long.class,
+          long.class,
+          long.class,
+          RoundingMode.class,
+          StatusFlags.class,
+          long[].class);
+      StatusFlags objectFlags = new StatusFlags();
+      StatusFlags rawFlags = new StatusFlags();
+      Bid128 objectResult =
+          (Bid128) object.invoke(left, right, mode, objectFlags);
+      long[] rawBits = new long[2];
+      raw.invoke(
+          null,
+          left.highBits(),
+          left.lowBits(),
+          right.highBits(),
+          right.lowBits(),
+          mode,
+          rawFlags,
+          rawBits);
+      check(
+          objectResult.highBits() == rawBits[0]
+              && objectResult.lowBits() == rawBits[1],
+          "arith128Bits:" + objectName);
+      check(
+          objectFlags.bits() == rawFlags.bits(), "arith128Flags:" + objectName);
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError("arith128:" + objectName, e);
+    }
+  }
+
+  private static void checkBinaryFlags64(
+      String objectName, String rawName, Bid64 left, Bid64 right) {
+    try {
+      Method object = Bid64.class.getMethod(
+          objectName, Bid64.class, StatusFlags.class);
+      Method raw = Bid64Raw.class.getMethod(
+          rawName, long.class, long.class, StatusFlags.class);
+      StatusFlags objectFlags = new StatusFlags();
+      StatusFlags rawFlags = new StatusFlags();
+      Bid64 objectResult = (Bid64) object.invoke(left, right, objectFlags);
+      long rawResult = (Long) raw.invoke(
+          null, left.toRawBits(), right.toRawBits(), rawFlags);
+      check(
+          objectResult.toRawBits() == rawResult,
+          "flags64Bits:" + objectName);
+      check(objectFlags.bits() == rawFlags.bits(), "flags64Flags:" + objectName);
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError("flags64:" + objectName, e);
+    }
+  }
+
+  private static void checkBinaryFlags128(
+      String objectName, String rawName, Bid128 left, Bid128 right) {
+    try {
+      Method object = Bid128.class.getMethod(
+          objectName, Bid128.class, StatusFlags.class);
+      Method raw = Bid128Raw.class.getMethod(
+          rawName,
+          long.class,
+          long.class,
+          long.class,
+          long.class,
+          StatusFlags.class,
+          long[].class);
+      StatusFlags objectFlags = new StatusFlags();
+      StatusFlags rawFlags = new StatusFlags();
+      Bid128 objectResult = (Bid128) object.invoke(left, right, objectFlags);
+      long[] rawBits = new long[2];
+      raw.invoke(
+          null,
+          left.highBits(),
+          left.lowBits(),
+          right.highBits(),
+          right.lowBits(),
+          rawFlags,
+          rawBits);
+      check(
+          objectResult.highBits() == rawBits[0]
+              && objectResult.lowBits() == rawBits[1],
+          "flags128Bits:" + objectName);
+      check(
+          objectFlags.bits() == rawFlags.bits(), "flags128Flags:" + objectName);
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError("flags128:" + objectName, e);
+    }
+  }
+
+  private static void checkFma64(Bid64 x, Bid64 y, Bid64 z, RoundingMode mode) {
+    StatusFlags objectFlags = new StatusFlags();
+    StatusFlags rawFlags = new StatusFlags();
+    long objectBits = x.fma(y, z, mode, objectFlags).toRawBits();
+    long rawBits = Bid64Raw.fma(
+        x.toRawBits(), y.toRawBits(), z.toRawBits(), mode, rawFlags);
+    check(objectBits == rawBits, "fma64Bits");
+    check(objectFlags.bits() == rawFlags.bits(), "fma64Flags");
+  }
+
+  private static void checkFma128(
+      Bid128 x, Bid128 y, Bid128 z, RoundingMode mode) {
+    StatusFlags objectFlags = new StatusFlags();
+    StatusFlags rawFlags = new StatusFlags();
+    Bid128 objectResult = x.fma(y, z, mode, objectFlags);
+    long[] rawBits = new long[2];
+    Bid128Raw.fma(
+        x.highBits(), x.lowBits(), y.highBits(), y.lowBits(),
+        z.highBits(), z.lowBits(), mode, rawFlags, rawBits);
+    check(
+        objectResult.highBits() == rawBits[0]
+            && objectResult.lowBits() == rawBits[1],
+        "fma128Bits");
+    check(objectFlags.bits() == rawFlags.bits(), "fma128Flags");
+  }
+
+  private static void checkQuantize64(Bid64 x, Bid64 y, RoundingMode mode) {
+    StatusFlags objectFlags = new StatusFlags();
+    StatusFlags rawFlags = new StatusFlags();
+    long objectBits = x.quantize(y, mode, objectFlags).toRawBits();
+    long rawBits = Bid64Raw.quantize(
+        x.toRawBits(), y.toRawBits(), mode, rawFlags);
+    check(objectBits == rawBits, "quantize64Bits");
+    check(objectFlags.bits() == rawFlags.bits(), "quantize64Flags");
+  }
+
+  private static void checkQuantize128(Bid128 x, Bid128 y, RoundingMode mode) {
+    StatusFlags objectFlags = new StatusFlags();
+    StatusFlags rawFlags = new StatusFlags();
+    Bid128 objectResult = x.quantize(y, mode, objectFlags);
+    long[] rawBits = new long[2];
+    Bid128Raw.quantize(
+        x.highBits(), x.lowBits(), y.highBits(), y.lowBits(),
+        mode, rawFlags, rawBits);
+    check(
+        objectResult.highBits() == rawBits[0]
+            && objectResult.lowBits() == rawBits[1],
+        "quantize128Bits");
+    check(objectFlags.bits() == rawFlags.bits(), "quantize128Flags");
+  }
+
+  private static void checkFdim64(Bid64 x, Bid64 y, RoundingMode mode) {
+    StatusFlags objectFlags = new StatusFlags();
+    StatusFlags rawFlags = new StatusFlags();
+    long objectBits = x.positiveDifference(y, mode, objectFlags).toRawBits();
+    long rawBits = Bid64Raw.fdim(x.toRawBits(), y.toRawBits(), mode, rawFlags);
+    check(objectBits == rawBits, "fdim64Bits");
+    check(objectFlags.bits() == rawFlags.bits(), "fdim64Flags");
+  }
+
+  private static void checkFdim128(Bid128 x, Bid128 y, RoundingMode mode) {
+    StatusFlags objectFlags = new StatusFlags();
+    StatusFlags rawFlags = new StatusFlags();
+    Bid128 objectResult = x.positiveDifference(y, mode, objectFlags);
+    long[] rawBits = new long[2];
+    Bid128Raw.fdim(
+        x.highBits(), x.lowBits(), y.highBits(), y.lowBits(),
+        mode, rawFlags, rawBits);
+    check(
+        objectResult.highBits() == rawBits[0]
+            && objectResult.lowBits() == rawBits[1],
+        "fdim128Bits");
+    check(objectFlags.bits() == rawFlags.bits(), "fdim128Flags");
+  }
+
+  private static void checkNext64(Bid64 x) {
+    StatusFlags upObject = new StatusFlags();
+    StatusFlags upRaw = new StatusFlags();
+    check(
+        x.nextUp(upObject).toRawBits() == Bid64Raw.nextUp(x.toRawBits(), upRaw),
+        "nextUp64Bits");
+    check(upObject.bits() == upRaw.bits(), "nextUp64Flags");
+    StatusFlags downObject = new StatusFlags();
+    StatusFlags downRaw = new StatusFlags();
+    check(
+        x.nextDown(downObject).toRawBits()
+            == Bid64Raw.nextDown(x.toRawBits(), downRaw),
+        "nextDown64Bits");
+    check(downObject.bits() == downRaw.bits(), "nextDown64Flags");
+  }
+
+  private static void checkNext128(Bid128 x) {
+    StatusFlags upObject = new StatusFlags();
+    StatusFlags upRaw = new StatusFlags();
+    long[] up = new long[2];
+    Bid128Raw.nextUp(x.highBits(), x.lowBits(), upRaw, up);
+    Bid128 objectUp = x.nextUp(upObject);
+    check(objectUp.highBits() == up[0] && objectUp.lowBits() == up[1], "nextUp128");
+    check(upObject.bits() == upRaw.bits(), "nextUp128Flags");
+    StatusFlags downObject = new StatusFlags();
+    StatusFlags downRaw = new StatusFlags();
+    long[] down = new long[2];
+    Bid128Raw.nextDown(x.highBits(), x.lowBits(), downRaw, down);
+    Bid128 objectDown = x.nextDown(downObject);
+    check(
+        objectDown.highBits() == down[0] && objectDown.lowBits() == down[1],
+        "nextDown128");
+    check(downObject.bits() == downRaw.bits(), "nextDown128Flags");
+  }
+
+  private static void checkRound64(Bid64 x, RoundingMode mode) {
+    StatusFlags objectFlags = new StatusFlags();
+    StatusFlags rawFlags = new StatusFlags();
+    long objectBits = x.roundIntegral(mode, false, objectFlags).toRawBits();
+    long rawBits = Bid64Raw.roundIntegral(x.toRawBits(), mode, rawFlags, false);
+    check(objectBits == rawBits, "round64Bits");
+    check(objectFlags.bits() == rawFlags.bits(), "round64Flags");
+    StatusFlags nearbyObject = new StatusFlags();
+    StatusFlags nearbyRaw = new StatusFlags();
+    check(
+        x.nearbyInt(mode, nearbyObject).toRawBits()
+            == Bid64Raw.nearbyint(x.toRawBits(), mode, nearbyRaw),
+        "nearby64Bits");
+    check(nearbyObject.bits() == nearbyRaw.bits(), "nearby64Flags");
+  }
+
+  private static void checkRound128(Bid128 x, RoundingMode mode) {
+    StatusFlags objectFlags = new StatusFlags();
+    StatusFlags rawFlags = new StatusFlags();
+    Bid128 objectResult = x.roundIntegral(mode, false, objectFlags);
+    long[] rawBits = new long[2];
+    Bid128Raw.roundIntegral(
+        x.highBits(), x.lowBits(), mode, rawFlags, false, rawBits);
+    check(
+        objectResult.highBits() == rawBits[0]
+            && objectResult.lowBits() == rawBits[1],
+        "round128Bits");
+    check(objectFlags.bits() == rawFlags.bits(), "round128Flags");
   }
 
   private static void checkUnary64(String name, Bid64 x, RoundingMode mode) {

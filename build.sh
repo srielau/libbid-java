@@ -2,11 +2,19 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-OUT="$ROOT/target/classes"
 JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}"
 if [[ ! -x "$JAVA_HOME/bin/javac" ]] && [[ -x /usr/libexec/java_home ]]; then
   JAVA_HOME="$(/usr/libexec/java_home -v 17)"
 fi
+export JAVA_HOME
+
+# Default gate is Maven: JUnit 5 (including binary128 oracles and
+# Bid128TgammaBoundaryTest) plus every main() vector suite.
+if [[ "${1:-}" != "javac" ]]; then
+  exec mvn -B test
+fi
+
+OUT="$ROOT/target/classes"
 JAVAC="$JAVA_HOME/bin/javac"
 JAVA="$JAVA_HOME/bin/java"
 
@@ -18,7 +26,10 @@ while IFS= read -r source; do
   SOURCES+=("$source")
 done < <(
   find "$ROOT/binary128/src/main/java" "$ROOT/bid/src/main/java" \
-       "$ROOT/bid/src/test/java" -name '*.java' ! -name 'LibraryTests.java'
+       "$ROOT/bid/src/test/java" -name '*.java' \
+       ! -name 'LibraryTests.java' \
+       ! -name 'Bid128TgammaBoundaryTest.java' \
+       ! -name 'IntelNativeReadtestTest.java'
   printf '%s\n' \
       "$ROOT/binary128/src/test/java/org/bidfp/binary128/Binary128Check.java"
 )
@@ -42,6 +53,7 @@ for test_class in \
     BidRawApiTest \
     BidBinary128VectorTest \
     BidTranscendentalVectorTest \
+    BidArithmeticVectorTest \
     BidComparisonVectorTest \
     BidRoundingVectorTest \
     BidScaleVectorTest \

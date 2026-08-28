@@ -57,6 +57,18 @@ final class IntelVectors {
     return Integer.parseInt(value.substring(0, Math.max(end, 1)), 16);
   }
 
+  /**
+   * Status bits from a vector line. Drops UNDERFLOW when Intel annotated
+   * {@code underflow_before_only}: this port detects tininess after rounding.
+   */
+  static int flags(String token, String line) {
+    int bits = flags(token);
+    if (line.contains("underflow_before_only")) {
+      return bits & ~StatusFlags.UNDERFLOW;
+    }
+    return bits;
+  }
+
   static long hex64(String token) {
     String value = stripBrackets(token);
     return Long.parseUnsignedLong(value, 16);
@@ -89,6 +101,51 @@ final class IntelVectors {
       return true;
     }
     return value.length() == 16 || value.length() == 32;
+  }
+
+  /**
+   * Parse a BID64 operand or expected encoding. Hex payloads are used as-is.
+   * Decimal text uses {@link Bid64Raw#fromString} with ties-to-even, matching
+   * Intel {@code readtest.c} operand conversion (the line rounding applies to
+   * the operation, not to reading decimal text).
+   */
+  static long operand64(String token) {
+    if (isHexPayload(token)) {
+      return token.contains(",") ? hex128(token)[1] : hex64(token);
+    }
+    if (token.equalsIgnoreCase("QNaN")) {
+      return Bid64.QUIET_NAN.toRawBits();
+    }
+    if (isSpecial(token)) {
+      return Bid64.parseExact(token).toRawBits();
+    }
+    return Bid64Raw.fromString(token, RoundingMode.TIES_TO_EVEN, new StatusFlags());
+  }
+
+  /**
+   * Parse a BID128 operand or expected encoding. Accepts comma-separated and
+   * 32-hex no-comma payloads.
+   */
+  static long[] operand128(String token) {
+    if (isHexPayload(token)) {
+      return hex128(token);
+    }
+    if (token.equalsIgnoreCase("QNaN")) {
+      return new long[] {Bid128.QUIET_NAN.highBits(), Bid128.QUIET_NAN.lowBits()};
+    }
+    if (isSpecial(token)) {
+      Bid128 value = Bid128.parseExact(token);
+      return new long[] {value.highBits(), value.lowBits()};
+    }
+    long[] result = new long[2];
+    Bid128Raw.fromString(
+        token, RoundingMode.TIES_TO_EVEN, new StatusFlags(), result);
+    return result;
+  }
+
+  private static boolean isSpecial(String token) {
+    String upper = token.toUpperCase(Locale.ROOT);
+    return upper.endsWith("NAN") || upper.endsWith("INF") || upper.endsWith("INFINITY");
   }
 
   private static String stripBrackets(String token) {

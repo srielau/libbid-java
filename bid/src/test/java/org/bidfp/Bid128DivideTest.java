@@ -28,94 +28,24 @@
  */
 package org.bidfp;
 
-import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.MathContext;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.List;
 import java.util.Random;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
-/** Intel-vector and boundary tests for {@link Bid128Divide}. */
+/** Special-value and boundary tests for {@link Bid128Divide}. */
 public final class Bid128DivideTest {
-  private static final Pattern RAW_VECTOR = Pattern.compile(
-      "^bid128_div ([0-4]) "
-          + "\\[([0-9a-fA-F]{16}),?([0-9a-fA-F]{16})\\] "
-          + "\\[([0-9a-fA-F]{16}),?([0-9a-fA-F]{16})\\] "
-          + "\\[([0-9a-fA-F]{16})([0-9a-fA-F]{16})\\] ([0-9a-fA-F]{2})$");
-  private static final RoundingMode[] INTEL_ROUNDING_MODES = {
-    RoundingMode.TIES_TO_EVEN,
-    RoundingMode.TOWARD_NEGATIVE,
-    RoundingMode.TOWARD_POSITIVE,
-    RoundingMode.TOWARD_ZERO,
-    RoundingMode.TIES_AWAY
-  };
-
   private Bid128DivideTest() {
   }
 
-  public static void main(String[] args) throws IOException {
-    testIntelRawVectors();
+  public static void main(String[] args) {
     testSpecialValues();
     testRoundingModes();
     testAdversarialDivision();
     testRandomDifferential();
     testFlagsAccumulate();
     System.out.println(
-        "Bid128DivideTest: all tests passed (217 Intel vectors, 2360 differential cases)");
-  }
-
-  private static void testIntelRawVectors() throws IOException {
-    List<String> lines = Files.readAllLines(findVectors());
-    int tested = 0;
-    for (String line : lines) {
-      Matcher matcher = RAW_VECTOR.matcher(line);
-      if (!matcher.matches()) {
-        continue;
-      }
-      int mode = Integer.parseInt(matcher.group(1));
-      Bid128 x = raw(matcher.group(2), matcher.group(3));
-      Bid128 y = raw(matcher.group(4), matcher.group(5));
-      long expectedHigh = unsignedHex(matcher.group(6));
-      long expectedLow = unsignedHex(matcher.group(7));
-      int expectedFlags = Integer.parseInt(matcher.group(8), 16);
-
-      StatusFlags flags = new StatusFlags();
-      Bid128 actual = Bid128Divide.divide(x, y, INTEL_ROUNDING_MODES[mode], flags);
-      if (actual.highBits() != expectedHigh
-          || actual.lowBits() != expectedLow
-          || flags.bits() != expectedFlags) {
-        throw new AssertionError(String.format(
-            "vector %s:%nexpected [0x%016x%016x] %02x,%n"
-                + "actual   [0x%016x%016x] %02x",
-            line,
-            expectedHigh,
-            expectedLow,
-            expectedFlags,
-            actual.highBits(),
-            actual.lowBits(),
-            flags.bits()));
-      }
-      tested++;
-    }
-    if (tested != 217) {
-      throw new AssertionError("expected 217 raw Intel vectors, tested " + tested);
-    }
-  }
-
-  private static Path findVectors() {
-    Path directory = Path.of("").toAbsolutePath();
-    while (directory != null) {
-      Path candidate = directory.resolve("upstream/TESTS/readtest.in");
-      if (Files.isRegularFile(candidate)) {
-        return candidate;
-      }
-      directory = directory.getParent();
-    }
-    throw new AssertionError("cannot locate upstream/TESTS/readtest.in");
+        "Bid128DivideTest: all tests passed (2360 differential cases)");
   }
 
   private static void testSpecialValues() {
