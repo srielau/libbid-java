@@ -120,4 +120,9 @@ class LibraryTests {
   void bidUtilities() throws IOException {
     BidUtilityVectorTest.main(new String[0]);
   }
+
+  @Test
+  void bidObjectApi() {
+    BidObjectApiTest.main(new String[0]);
+  }
 }

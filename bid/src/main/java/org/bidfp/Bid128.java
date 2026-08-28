@@ -101,6 +101,30 @@ public final class Bid128 {
     return finite(negative, biasedExponent, coefficient.high(), coefficient.low());
   }
 
+  public static Bid128 parse(String text, RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.fromString(text, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public static Bid128 fromLong(long value, RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.fromInt64(value, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public static Bid128 fromDouble(double value, RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.fromBinary64(value, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public static Bid128 fromFloat(float value, RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.fromBinary32(value, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
   public static Bid128 finite(
       boolean negative, int biasedExponent, long coefficientHigh, long coefficientLow) {
     if (biasedExponent < 0 || biasedExponent > 12_287) {
@@ -146,6 +170,28 @@ public final class Bid128 {
 
   public long lowBits() {
     return low;
+  }
+
+  public long toLong(RoundingMode mode, StatusFlags flags) {
+    StatusFlags conversionFlags = new StatusFlags();
+    long result = Bid128Raw.toInt64(high, low, mode, conversionFlags, true);
+    flags.raise(conversionFlags.bits());
+    if (conversionFlags.contains(StatusFlags.INVALID)) {
+      throw new ArithmeticException("BID128 value is outside the long range");
+    }
+    return result;
+  }
+
+  public double toDouble(RoundingMode mode, StatusFlags flags) {
+    return Bid128Raw.toBinary64(high, low, mode, flags);
+  }
+
+  public float toFloat(RoundingMode mode, StatusFlags flags) {
+    return Bid128Raw.toBinary32(high, low, mode, flags);
+  }
+
+  public Bid64 toBid64(RoundingMode mode, StatusFlags flags) {
+    return Bid64.fromRawBits(Bid128Raw.toBid64(high, low, mode, flags));
   }
 
   /** Exact coefficient-and-exponent text that preserves the value's quantum. */
@@ -300,6 +346,92 @@ public final class Bid128 {
     return fromRawBits(result[0], result[1]);
   }
 
+  public Bid128 roundIntegral(RoundingMode mode, boolean exact, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.roundIntegral(high, low, mode, flags, exact, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 nearbyInt(RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.nearbyint(high, low, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 scaleByPowerOfTen(
+      int n, RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.scalbn(high, low, n, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 fmod(Bid128 other, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.fmod(high, low, other.high, other.low, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 nextAfter(Bid128 target, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.nextAfter(high, low, target.high, target.low, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 minNum(Bid128 other, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.minnum(high, low, other.high, other.low, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 maxNum(Bid128 other, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.maxnum(high, low, other.high, other.low, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 minNumMagnitude(Bid128 other, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.minnumMag(high, low, other.high, other.low, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 maxNumMagnitude(Bid128 other, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.maxnumMag(high, low, other.high, other.low, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 positiveDifference(
+      Bid128 other, RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.fdim(high, low, other.high, other.low, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public int quantumExponent(StatusFlags flags) {
+    return Bid128Raw.quantexp(high, low, flags);
+  }
+
+  public Bid128 quantum() {
+    long[] result = new long[2];
+    Bid128Raw.quantum(high, low, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public int ilogb(StatusFlags flags) {
+    return Bid128Raw.ilogb(high, low, flags);
+  }
+
+  public Bid128 logb(StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.logb(high, low, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public static Bid128 copy(Bid128 x) {
+    return x;
+  }
+
   public boolean signalingLess(Bid128 other, StatusFlags flags) {
     return compare(other, flags, true) == -1;
   }
@@ -396,6 +528,24 @@ public final class Bid128 {
 
   public boolean quietUnordered(Bid128 other, StatusFlags flags) {
     return compare(other, flags, false) == UNORDERED;
+  }
+
+  public boolean quietGreaterUnordered(Bid128 other, StatusFlags flags) {
+    int comparison = compare(other, flags, false);
+    return comparison == 1 || comparison == UNORDERED;
+  }
+
+  public boolean quietLessUnordered(Bid128 other, StatusFlags flags) {
+    int comparison = compare(other, flags, false);
+    return comparison == -1 || comparison == UNORDERED;
+  }
+
+  public boolean quietNotGreater(Bid128 other, StatusFlags flags) {
+    return compare(other, flags, false) != 1;
+  }
+
+  public boolean quietNotLess(Bid128 other, StatusFlags flags) {
+    return compare(other, flags, false) != -1;
   }
 
   private int compare(Bid128 other, StatusFlags flags, boolean signaling) {

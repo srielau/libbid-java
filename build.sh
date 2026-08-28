@@ -41,6 +41,7 @@ for test_class in \
     BidDpdVectorTest \
     BidIntegerVectorTest \
     BidMiscVectorTest \
-    BidUtilityVectorTest; do
+    BidUtilityVectorTest \
+    BidObjectApiTest; do
   "$JAVA" -ea -cp "$OUT" "org.bidfp.$test_class"
 done

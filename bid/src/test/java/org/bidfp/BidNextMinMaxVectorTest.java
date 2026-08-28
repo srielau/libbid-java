@@ -4,12 +4,22 @@ import java.io.IOException;
 
 /** Runs Intel BID64/BID128 next, min/max, and positive-difference vectors. */
 public final class BidNextMinMaxVectorTest {
+  private static final int EXPECTED_MALFORMED_VECTORS = 19;
+  private static int skippedMalformedVectors;
+
   private BidNextMinMaxVectorTest() {
   }
 
   public static void main(String[] args) throws IOException {
+    skippedMalformedVectors = 0;
     int tested = test64() + test128();
-    System.out.println("BidNextMinMaxVectorTest: all tests passed (" + tested + " vectors)");
+    if (skippedMalformedVectors != EXPECTED_MALFORMED_VECTORS) {
+      throw new AssertionError(
+          "unexpected malformed vector count: " + skippedMalformedVectors);
+    }
+    System.out.println(
+        "BidNextMinMaxVectorTest: all tests passed (" + tested
+            + " vectors, " + skippedMalformedVectors + " malformed upstream vectors skipped)");
   }
 
   private static int test64() throws IOException {
@@ -23,6 +33,7 @@ public final class BidNextMinMaxVectorTest {
         long x = operand64(tokens[2]);
         int resultIndex = operation.equals("nextup") || operation.equals("nextdown") ? 3 : 4;
         if (!isFlagToken(tokens[resultIndex + 1])) {
+          skippedMalformedVectors++;
           continue;
         }
         long y = resultIndex == 3 ? 0L : operand64(tokens[3]);
@@ -51,10 +62,12 @@ public final class BidNextMinMaxVectorTest {
         long[] x = operand128(tokens[2]);
         int resultIndex = operation.equals("nextup") || operation.equals("nextdown") ? 3 : 4;
         if (!isFlagToken(tokens[resultIndex + 1])) {
+          skippedMalformedVectors++;
           continue;
         }
         if (tokens[resultIndex].startsWith("[")
             && tokens[resultIndex].replace(",", "").length() != 34) {
+          skippedMalformedVectors++;
           continue;
         }
         long[] y = resultIndex == 3 ? new long[2] : operand128(tokens[3]);

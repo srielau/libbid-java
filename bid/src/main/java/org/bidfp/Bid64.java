@@ -137,82 +137,44 @@ public final class Bid64 {
     return finite(negative, biasedExponent, Long.parseLong(digits));
   }
 
-  public static Bid64 fromLong(long value, RoundingMode mode, StatusFlags flags) {
-    boolean negative = value < 0;
-    String digits = Long.toString(value);
-    if (negative) {
-      digits = digits.substring(1);
-    }
-    if (digits.length() <= 16) {
-      return finite(negative, 398, Long.parseLong(digits));
-    }
+  public static Bid64 parse(String text, RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.fromString(text, mode, flags));
+  }
 
-    int discardedDigits = digits.length() - 16;
-    long coefficient = Long.parseLong(digits.substring(0, 16));
-    String discarded = digits.substring(16);
-    boolean inexact = discarded.chars().anyMatch(c -> c != '0');
-    if (inexact) {
-      flags.raise(StatusFlags.INEXACT);
-    }
-    if (shouldIncrement(
-        negative, coefficient, discarded.charAt(0), discarded.substring(1), mode)) {
-      coefficient++;
-      if (coefficient == 10_000_000_000_000_000L) {
-        coefficient = 1_000_000_000_000_000L;
-        discardedDigits++;
-      }
-    }
-    return finite(negative, 398 + discardedDigits, coefficient);
+  public static Bid64 fromDouble(double value, RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.fromBinary64(value, mode, flags));
+  }
+
+  public static Bid64 fromFloat(float value, RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.fromBinary32(value, mode, flags));
+  }
+
+  public static Bid64 fromLong(long value, RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.fromInt64(value, mode, flags));
   }
 
   public long toLong(RoundingMode mode, StatusFlags flags) {
-    if (!isFinite()) {
-      flags.raise(StatusFlags.INVALID);
-      throw new ArithmeticException("non-finite BID64 cannot be converted to long");
+    StatusFlags conversionFlags = new StatusFlags();
+    long result = Bid64Raw.toInt64(bits, mode, conversionFlags, true);
+    flags.raise(conversionFlags.bits());
+    if (conversionFlags.contains(StatusFlags.INVALID)) {
+      throw new ArithmeticException("BID64 value is outside the long range");
     }
-    long coefficient = significand();
-    boolean negative = isSigned();
-    int exponent = biasedExponent() - 398;
-    long magnitude;
-    if (coefficient == 0) {
-      return 0;
-    } else if (exponent >= 0) {
-      magnitude = coefficient;
-      for (int i = 0; i < exponent; i++) {
-        long maximumBeforeMultiply = 922_337_203_685_477_580L;
-        if (Long.compareUnsigned(magnitude, maximumBeforeMultiply) > 0) {
-          return invalidLong(flags);
-        }
-        magnitude *= 10;
-      }
-    } else {
-      int places = -exponent;
-      if (places > 16) {
-        flags.raise(StatusFlags.INEXACT);
-        boolean increment = mode == RoundingMode.TOWARD_NEGATIVE && negative
-            || mode == RoundingMode.TOWARD_POSITIVE && !negative;
-        return increment ? (negative ? -1 : 1) : 0;
-      }
-      long divisor = places == 16 ? 10_000_000_000_000_000L : POW10[places];
-      magnitude = coefficient / divisor;
-      long remainder = coefficient % divisor;
-      if (remainder != 0) {
-        flags.raise(StatusFlags.INEXACT);
-        if (shouldIncrementInteger(negative, magnitude, remainder, divisor, mode)) {
-          magnitude++;
-        }
-      }
-    }
-    if (negative) {
-      if (Long.compareUnsigned(magnitude, Long.MIN_VALUE) > 0) {
-        return invalidLong(flags);
-      }
-      return magnitude == Long.MIN_VALUE ? Long.MIN_VALUE : -magnitude;
-    }
-    if (magnitude < 0) {
-      return invalidLong(flags);
-    }
-    return magnitude;
+    return result;
+  }
+
+  public double toDouble(RoundingMode mode, StatusFlags flags) {
+    return Bid64Raw.toBinary64(bits, mode, flags);
+  }
+
+  public float toFloat(RoundingMode mode, StatusFlags flags) {
+    return Bid64Raw.toBinary32(bits, mode, flags);
+  }
+
+  public Bid128 toBid128(StatusFlags flags) {
+    long[] result = new long[2];
+    Bid64Raw.toBid128(bits, result, flags);
+    return Bid128.fromRawBits(result[0], result[1]);
   }
 
   /** Exact coefficient-and-exponent text that preserves the value's quantum. */
@@ -357,6 +319,63 @@ public final class Bid64 {
     return fromRawBits(Bid64Raw.nextDown(bits, flags));
   }
 
+  public Bid64 roundIntegral(RoundingMode mode, boolean exact, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.roundIntegral(bits, mode, flags, exact));
+  }
+
+  public Bid64 nearbyInt(RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.nearbyint(bits, mode, flags));
+  }
+
+  public Bid64 scaleByPowerOfTen(int n, RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.scalbn(bits, n, mode, flags));
+  }
+
+  public Bid64 fmod(Bid64 other, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.fmod(bits, other.bits, flags));
+  }
+
+  public Bid64 nextAfter(Bid64 target, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.nextAfter(bits, target.bits, flags));
+  }
+
+  public Bid64 minNum(Bid64 other, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.minnum(bits, other.bits, flags));
+  }
+
+  public Bid64 maxNum(Bid64 other, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.maxnum(bits, other.bits, flags));
+  }
+
+  public Bid64 minNumMagnitude(Bid64 other, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.minnumMag(bits, other.bits, flags));
+  }
+
+  public Bid64 maxNumMagnitude(Bid64 other, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.maxnumMag(bits, other.bits, flags));
+  }
+
+  public Bid64 positiveDifference(
+      Bid64 other, RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.fdim(bits, other.bits, mode, flags));
+  }
+
+  public int quantumExponent(StatusFlags flags) {
+    return Bid64Raw.quantexp(bits, flags);
+  }
+
+  public Bid64 quantum() {
+    return fromRawBits(Bid64Raw.quantum(bits));
+  }
+
+  public int ilogb(StatusFlags flags) {
+    return Bid64Raw.ilogb(bits, flags);
+  }
+
+  public Bid64 logb(StatusFlags flags) {
+    return fromRawBits(Bid64Raw.logb(bits, flags));
+  }
+
   public static Bid64 copy(Bid64 x) {
     return x;
   }
@@ -405,6 +424,24 @@ public final class Bid64 {
 
   public boolean quietUnordered(Bid64 other, StatusFlags flags) {
     return compare(other, flags, false) == UNORDERED;
+  }
+
+  public boolean quietGreaterUnordered(Bid64 other, StatusFlags flags) {
+    int comparison = compare(other, flags, false);
+    return comparison == 1 || comparison == UNORDERED;
+  }
+
+  public boolean quietLessUnordered(Bid64 other, StatusFlags flags) {
+    int comparison = compare(other, flags, false);
+    return comparison == -1 || comparison == UNORDERED;
+  }
+
+  public boolean quietNotGreater(Bid64 other, StatusFlags flags) {
+    return compare(other, flags, false) != 1;
+  }
+
+  public boolean quietNotLess(Bid64 other, StatusFlags flags) {
+    return compare(other, flags, false) != -1;
   }
 
   public boolean signalingLess(Bid64 other, StatusFlags flags) {
@@ -742,60 +779,6 @@ public final class Bid64 {
 
   private static String signedExponent(int exponent) {
     return exponent >= 0 ? "+" + exponent : Integer.toString(exponent);
-  }
-
-  private static boolean shouldIncrement(
-      boolean negative,
-      long coefficient,
-      char firstDiscarded,
-      String remainingDiscarded,
-      RoundingMode mode) {
-    boolean anyDiscarded = firstDiscarded != '0'
-        || remainingDiscarded.chars().anyMatch(c -> c != '0');
-    if (!anyDiscarded) {
-      return false;
-    }
-    switch (mode) {
-      case TOWARD_NEGATIVE:
-        return negative;
-      case TOWARD_POSITIVE:
-        return !negative;
-      case TOWARD_ZERO:
-        return false;
-      case TIES_AWAY:
-        return firstDiscarded >= '5';
-      case TIES_TO_EVEN:
-        return firstDiscarded > '5'
-            || firstDiscarded == '5'
-            && (remainingDiscarded.chars().anyMatch(c -> c != '0')
-                || (coefficient & 1) != 0);
-      default:
-        throw new AssertionError(mode);
-    }
-  }
-
-  private static boolean shouldIncrementInteger(
-      boolean negative, long integer, long remainder, long divisor, RoundingMode mode) {
-    switch (mode) {
-      case TOWARD_NEGATIVE:
-        return negative;
-      case TOWARD_POSITIVE:
-        return !negative;
-      case TOWARD_ZERO:
-        return false;
-      case TIES_AWAY:
-        return remainder * 2 >= divisor;
-      case TIES_TO_EVEN:
-        long doubled = remainder * 2;
-        return doubled > divisor || doubled == divisor && (integer & 1) != 0;
-      default:
-        throw new AssertionError(mode);
-    }
-  }
-
-  private static long invalidLong(StatusFlags flags) {
-    flags.raise(StatusFlags.INVALID);
-    throw new ArithmeticException("BID64 value is outside the long range");
   }
 
   @Override

@@ -210,6 +210,18 @@ public final class Bid128Raw {
     return Bid128.fromRawBits(xh, xl).signalingGreater(Bid128.fromRawBits(yh, yl), flags);
   }
 
+  public static boolean signalingEqual(
+      long xh, long xl, long yh, long yl, StatusFlags flags) {
+    return Bid128.fromRawBits(xh, xl)
+        .signalingEqual(Bid128.fromRawBits(yh, yl), flags);
+  }
+
+  public static boolean signalingNotEqual(
+      long xh, long xl, long yh, long yl, StatusFlags flags) {
+    return Bid128.fromRawBits(xh, xl)
+        .signalingNotEqual(Bid128.fromRawBits(yh, yl), flags);
+  }
+
   public static boolean signalingLessEqual(
       long xh, long xl, long yh, long yl, StatusFlags flags) {
     return Bid128.fromRawBits(xh, xl)
@@ -244,6 +256,18 @@ public final class Bid128Raw {
       long xh, long xl, long yh, long yl, StatusFlags flags) {
     return Bid128.fromRawBits(xh, xl)
         .signalingNotLess(Bid128.fromRawBits(yh, yl), flags);
+  }
+
+  public static boolean signalingOrdered(
+      long xh, long xl, long yh, long yl, StatusFlags flags) {
+    return Bid128.fromRawBits(xh, xl)
+        .signalingOrdered(Bid128.fromRawBits(yh, yl), flags);
+  }
+
+  public static boolean signalingUnordered(
+      long xh, long xl, long yh, long yl, StatusFlags flags) {
+    return Bid128.fromRawBits(xh, xl)
+        .signalingUnordered(Bid128.fromRawBits(yh, yl), flags);
   }
 
   public static boolean sameQuantum(long xh, long xl, long yh, long yl) {
@@ -286,7 +310,13 @@ public final class Bid128Raw {
   }
 
   public static long toInt64(long hi, long lo, RoundingMode mode, StatusFlags flags) {
-    return BidConvert.toInt64From128(hi, lo, mode, flags, true, 64, false);
+    return toInt64(hi, lo, mode, flags, false);
+  }
+
+  public static long toInt64(
+      long hi, long lo, RoundingMode mode, StatusFlags flags, boolean signalInexact) {
+    return BidConvert.toInt64From128(
+        hi, lo, mode, flags, true, 64, signalInexact);
   }
 
   public static long toInteger(
@@ -309,6 +339,64 @@ public final class Bid128Raw {
         hi, lo, RoundingMode.TOWARD_ZERO, flags, true, 64, true);
   }
 
+  public static long toInt64Floor(long hi, long lo, StatusFlags flags) {
+    return BidConvert.toInt64From128(
+        hi, lo, RoundingMode.TOWARD_NEGATIVE, flags, true, 64, false);
+  }
+
+  public static long toInt64Ceil(long hi, long lo, StatusFlags flags) {
+    return BidConvert.toInt64From128(
+        hi, lo, RoundingMode.TOWARD_POSITIVE, flags, true, 64, false);
+  }
+
+  public static long toInt64Rnint(long hi, long lo, StatusFlags flags) {
+    return BidConvert.toInt64From128(
+        hi, lo, RoundingMode.TIES_TO_EVEN, flags, true, 64, false);
+  }
+
+  public static long toInt64Rninta(long hi, long lo, StatusFlags flags) {
+    return BidConvert.toInt64From128(
+        hi, lo, RoundingMode.TIES_AWAY, flags, true, 64, false);
+  }
+
+  public static long toInt64Xfloor(long hi, long lo, StatusFlags flags) {
+    return BidConvert.toInt64From128(
+        hi, lo, RoundingMode.TOWARD_NEGATIVE, flags, true, 64, true);
+  }
+
+  public static long toInt64Xceil(long hi, long lo, StatusFlags flags) {
+    return BidConvert.toInt64From128(
+        hi, lo, RoundingMode.TOWARD_POSITIVE, flags, true, 64, true);
+  }
+
+  public static long toInt64Xrnint(long hi, long lo, StatusFlags flags) {
+    return BidConvert.toInt64From128(
+        hi, lo, RoundingMode.TIES_TO_EVEN, flags, true, 64, true);
+  }
+
+  public static long toInt64Xrninta(long hi, long lo, StatusFlags flags) {
+    return BidConvert.toInt64From128(
+        hi, lo, RoundingMode.TIES_AWAY, flags, true, 64, true);
+  }
+
+  public static int toInt32(
+      long hi, long lo, RoundingMode mode, StatusFlags flags, boolean signalInexact) {
+    return (int) BidConvert.toInt64From128(
+        hi, lo, mode, flags, true, 32, signalInexact);
+  }
+
+  public static long toUInt64(
+      long hi, long lo, RoundingMode mode, StatusFlags flags, boolean signalInexact) {
+    return BidConvert.toInt64From128(
+        hi, lo, mode, flags, false, 64, signalInexact);
+  }
+
+  public static int toUInt32(
+      long hi, long lo, RoundingMode mode, StatusFlags flags, boolean signalInexact) {
+    return (int) BidConvert.toInt64From128(
+        hi, lo, mode, flags, false, 32, signalInexact);
+  }
+
   public static void fromBinary64(double value, RoundingMode mode, StatusFlags flags, long[] out) {
     BidConvert.fromBinary64To128(value, mode, flags, out);
   }
@@ -327,6 +415,11 @@ public final class Bid128Raw {
 
   public static long toBid64(long hi, long lo, RoundingMode mode, StatusFlags flags) {
     return BidConvert.bid128ToBid64(hi, lo, mode, flags);
+  }
+
+  public static void roundIntegral(
+      long hi, long lo, RoundingMode mode, StatusFlags flags, boolean exact, long[] out) {
+    BidIntegral.round128(hi, lo, mode, flags, exact, out);
   }
 
   public static void roundIntegralZero(long hi, long lo, StatusFlags flags, long[] out) {

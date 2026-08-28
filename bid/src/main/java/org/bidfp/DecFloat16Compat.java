@@ -17,8 +17,8 @@ package org.bidfp;
 
 /**
  * Signature-compatible replacements for {@code DecFloat16} JNI natives.
- * Arithmetic overloads that DBR discards flags still accept rounding codes
- * 0..4. Prefer {@link Bid64Raw} when status flags are required.
+ * The original JNI signatures retain their flag-discarding behavior. Overloads with
+ * {@code statusOut} expose IEEE status flags to Java callers.
  */
 public final class DecFloat16Compat {
   private DecFloat16Compat() {
@@ -52,19 +52,35 @@ public final class DecFloat16Compat {
   }
 
   public static long bid64Add(long a, long b, int rounding) {
-    return Bid64Raw.add(a, b, rounding, null);
+    return bid64Add(a, b, rounding, null);
+  }
+
+  public static long bid64Add(long a, long b, int rounding, int[] statusOut) {
+    return Bid64Raw.add(a, b, rounding, statusOut);
   }
 
   public static long bid64Sub(long a, long b, int rounding) {
-    return Bid64Raw.sub(a, b, rounding, null);
+    return bid64Sub(a, b, rounding, null);
+  }
+
+  public static long bid64Sub(long a, long b, int rounding, int[] statusOut) {
+    return Bid64Raw.sub(a, b, rounding, statusOut);
   }
 
   public static long bid64Mul(long a, long b, int rounding) {
-    return Bid64Raw.mul(a, b, rounding, null);
+    return bid64Mul(a, b, rounding, null);
+  }
+
+  public static long bid64Mul(long a, long b, int rounding, int[] statusOut) {
+    return Bid64Raw.mul(a, b, rounding, statusOut);
   }
 
   public static long bid64Div(long a, long b, int rounding) {
-    return Bid64Raw.div(a, b, rounding, null);
+    return bid64Div(a, b, rounding, null);
+  }
+
+  public static long bid64Div(long a, long b, int rounding, int[] statusOut) {
+    return Bid64Raw.div(a, b, rounding, statusOut);
   }
 
   public static long bid64Negate(long payload) {
@@ -72,7 +88,14 @@ public final class DecFloat16Compat {
   }
 
   public static long bid64RoundIntegralZero(long payload) {
-    return Bid64Raw.roundIntegralZero(payload, new StatusFlags());
+    return bid64RoundIntegralZero(payload, null);
+  }
+
+  public static long bid64RoundIntegralZero(long payload, int[] statusOut) {
+    StatusFlags flags = new StatusFlags();
+    long result = Bid64Raw.roundIntegralZero(payload, flags);
+    flags.copyTo(statusOut);
+    return result;
   }
 
   public static long bid64Abs(long payload) {
@@ -84,11 +107,25 @@ public final class DecFloat16Compat {
   }
 
   public static long bid64Floor(long payload) {
-    return Bid64Raw.roundIntegralNegative(payload, new StatusFlags());
+    return bid64Floor(payload, null);
+  }
+
+  public static long bid64Floor(long payload, int[] statusOut) {
+    StatusFlags flags = new StatusFlags();
+    long result = Bid64Raw.floor(payload, flags);
+    flags.copyTo(statusOut);
+    return result;
   }
 
   public static long bid64Ceil(long payload) {
-    return Bid64Raw.roundIntegralPositive(payload, new StatusFlags());
+    return bid64Ceil(payload, null);
+  }
+
+  public static long bid64Ceil(long payload, int[] statusOut) {
+    StatusFlags flags = new StatusFlags();
+    long result = Bid64Raw.ceil(payload, flags);
+    flags.copyTo(statusOut);
+    return result;
   }
 
   public static long bid64RoundToScale(long payload, long targetExponent, int rounding) {
@@ -96,7 +133,14 @@ public final class DecFloat16Compat {
   }
 
   public static long bid64Sqrt(long payload, int rounding) {
-    return Bid64Raw.sqrt(payload, RoundingMode.fromIntel(rounding), new StatusFlags());
+    return bid64Sqrt(payload, rounding, null);
+  }
+
+  public static long bid64Sqrt(long payload, int rounding, int[] statusOut) {
+    StatusFlags flags = new StatusFlags();
+    long result = Bid64Raw.sqrt(payload, RoundingMode.fromIntel(rounding), flags);
+    flags.copyTo(statusOut);
+    return result;
   }
 
   public static boolean bid64IsInf(long payload) {

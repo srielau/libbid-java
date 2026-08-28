@@ -197,6 +197,14 @@ public final class Bid64Raw {
     return Bid64.fromRawBits(x).signalingEqual(Bid64.fromRawBits(y), flags);
   }
 
+  public static boolean signalingOrdered(long x, long y, StatusFlags flags) {
+    return Bid64.fromRawBits(x).signalingOrdered(Bid64.fromRawBits(y), flags);
+  }
+
+  public static boolean signalingUnordered(long x, long y, StatusFlags flags) {
+    return Bid64.fromRawBits(x).signalingUnordered(Bid64.fromRawBits(y), flags);
+  }
+
   public static boolean signalingGreaterUnordered(long x, long y, StatusFlags flags) {
     return Bid64.fromRawBits(x).signalingGreaterUnordered(Bid64.fromRawBits(y), flags);
   }
@@ -356,6 +364,14 @@ public final class Bid64Raw {
 
   public static long roundIntegralNearestAway(long x, StatusFlags flags) {
     return roundIntegral(x, RoundingMode.TIES_AWAY, flags, false);
+  }
+
+  public static long floor(long x, StatusFlags flags) {
+    return roundIntegralNegative(x, flags);
+  }
+
+  public static long ceil(long x, StatusFlags flags) {
+    return roundIntegralPositive(x, flags);
   }
 
   public static long roundIntegralExact(long x, RoundingMode mode, StatusFlags flags) {

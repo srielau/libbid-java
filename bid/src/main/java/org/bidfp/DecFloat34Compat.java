@@ -17,6 +17,9 @@ package org.bidfp;
 
 /**
  * Signature-compatible replacements for {@code DecFloat34} JNI natives.
+ *
+ * <p>The original JNI signatures retain their flag-discarding behavior. Overloads with
+ * {@code statusOut} expose IEEE status flags to Java callers.
  */
 public final class DecFloat34Compat {
   private DecFloat34Compat() {
@@ -51,22 +54,46 @@ public final class DecFloat34Compat {
 
   public static void bid128Add(
       long aHi, long aLo, long bHi, long bLo, int rounding, long[] payloadOut) {
-    Bid128Raw.add(aHi, aLo, bHi, bLo, rounding, payloadOut, null);
+    bid128Add(aHi, aLo, bHi, bLo, rounding, payloadOut, null);
+  }
+
+  public static void bid128Add(
+      long aHi, long aLo, long bHi, long bLo, int rounding, long[] payloadOut,
+      int[] statusOut) {
+    Bid128Raw.add(aHi, aLo, bHi, bLo, rounding, payloadOut, statusOut);
   }
 
   public static void bid128Sub(
       long aHi, long aLo, long bHi, long bLo, int rounding, long[] payloadOut) {
-    Bid128Raw.sub(aHi, aLo, bHi, bLo, rounding, payloadOut, null);
+    bid128Sub(aHi, aLo, bHi, bLo, rounding, payloadOut, null);
+  }
+
+  public static void bid128Sub(
+      long aHi, long aLo, long bHi, long bLo, int rounding, long[] payloadOut,
+      int[] statusOut) {
+    Bid128Raw.sub(aHi, aLo, bHi, bLo, rounding, payloadOut, statusOut);
   }
 
   public static void bid128Mul(
       long aHi, long aLo, long bHi, long bLo, int rounding, long[] payloadOut) {
-    Bid128Raw.mul(aHi, aLo, bHi, bLo, rounding, payloadOut, null);
+    bid128Mul(aHi, aLo, bHi, bLo, rounding, payloadOut, null);
+  }
+
+  public static void bid128Mul(
+      long aHi, long aLo, long bHi, long bLo, int rounding, long[] payloadOut,
+      int[] statusOut) {
+    Bid128Raw.mul(aHi, aLo, bHi, bLo, rounding, payloadOut, statusOut);
   }
 
   public static void bid128Div(
       long aHi, long aLo, long bHi, long bLo, int rounding, long[] payloadOut) {
-    Bid128Raw.div(aHi, aLo, bHi, bLo, rounding, payloadOut, null);
+    bid128Div(aHi, aLo, bHi, bLo, rounding, payloadOut, null);
+  }
+
+  public static void bid128Div(
+      long aHi, long aLo, long bHi, long bLo, int rounding, long[] payloadOut,
+      int[] statusOut) {
+    Bid128Raw.div(aHi, aLo, bHi, bLo, rounding, payloadOut, statusOut);
   }
 
   public static void bid128Negate(long hi, long lo, long[] payloadOut) {
@@ -74,7 +101,14 @@ public final class DecFloat34Compat {
   }
 
   public static void bid128RoundIntegralZero(long hi, long lo, long[] payloadOut) {
-    Bid128Raw.roundIntegralZero(hi, lo, new StatusFlags(), payloadOut);
+    bid128RoundIntegralZero(hi, lo, payloadOut, null);
+  }
+
+  public static void bid128RoundIntegralZero(
+      long hi, long lo, long[] payloadOut, int[] statusOut) {
+    StatusFlags flags = new StatusFlags();
+    Bid128Raw.roundIntegralZero(hi, lo, flags, payloadOut);
+    flags.copyTo(statusOut);
   }
 
   public static void bid128Abs(long hi, long lo, long[] payloadOut) {
@@ -86,11 +120,25 @@ public final class DecFloat34Compat {
   }
 
   public static void bid128Floor(long hi, long lo, long[] payloadOut) {
-    Bid128Raw.floor(hi, lo, new StatusFlags(), payloadOut);
+    bid128Floor(hi, lo, payloadOut, null);
+  }
+
+  public static void bid128Floor(
+      long hi, long lo, long[] payloadOut, int[] statusOut) {
+    StatusFlags flags = new StatusFlags();
+    Bid128Raw.floor(hi, lo, flags, payloadOut);
+    flags.copyTo(statusOut);
   }
 
   public static void bid128Ceil(long hi, long lo, long[] payloadOut) {
-    Bid128Raw.ceil(hi, lo, new StatusFlags(), payloadOut);
+    bid128Ceil(hi, lo, payloadOut, null);
+  }
+
+  public static void bid128Ceil(
+      long hi, long lo, long[] payloadOut, int[] statusOut) {
+    StatusFlags flags = new StatusFlags();
+    Bid128Raw.ceil(hi, lo, flags, payloadOut);
+    flags.copyTo(statusOut);
   }
 
   public static void bid128RoundToScale(
@@ -99,7 +147,14 @@ public final class DecFloat34Compat {
   }
 
   public static void bid128Sqrt(long hi, long lo, int rounding, long[] payloadOut) {
-    Bid128Raw.sqrt(hi, lo, RoundingMode.fromIntel(rounding), new StatusFlags(), payloadOut);
+    bid128Sqrt(hi, lo, rounding, payloadOut, null);
+  }
+
+  public static void bid128Sqrt(
+      long hi, long lo, int rounding, long[] payloadOut, int[] statusOut) {
+    StatusFlags flags = new StatusFlags();
+    Bid128Raw.sqrt(hi, lo, RoundingMode.fromIntel(rounding), flags, payloadOut);
+    flags.copyTo(statusOut);
   }
 
   public static boolean bid128IsInf(long hi, long lo) {
