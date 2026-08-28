@@ -66,14 +66,8 @@ final class Bid64Domain {
         Bid64.fromRawBits(Bid64Log.ONE), new StatusFlags())) {
       return invalid(flags);
     }
-    long result = BidTranscendental.unary64(
+    return BidTranscendental.unary64(
         x, mode, flags, org.bidfp.binary128.Dpml::acosh);
-    // Hard-to-round point where the binary128 kernel is just above the BID64 midpoint.
-    if (x == 0x30c0_0000_05f5_e101L && mode == RoundingMode.TIES_TO_EVEN) {
-      result = Bid64Raw.nextDown(result, new StatusFlags());
-      return Bid64Raw.nextDown(result, new StatusFlags());
-    }
-    return result;
   }
 
   static long atanh(long x, RoundingMode mode, StatusFlags flags) {

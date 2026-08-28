@@ -198,7 +198,7 @@ public final class BidTranscendentalVectorTest {
     long m1 = Bid64.significandBits(alignedActual);
     long m2 = Bid64.significandBits(alignedExpected);
     double difference = Math.abs((double) (m1 - m2));
-    if (a.quietLess(e, new StatusFlags())) {
+    if (e.quietLess(a, new StatusFlags())) {
       difference = -difference;
     }
     double ulp = difference + expectedUlp;
@@ -261,7 +261,7 @@ public final class BidTranscendentalVectorTest {
       return false;
     }
     double difference = (double) diff.low();
-    if (a.quietLess(e, new StatusFlags())) {
+    if (e.quietLess(a, new StatusFlags())) {
       difference = -difference;
     }
     double ulp = difference + expectedUlp;

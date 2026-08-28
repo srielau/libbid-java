@@ -90,6 +90,35 @@ public final class DpmlGamma {
     return UxOps.pack(result, mode, st);
   }
 
+  /**
+   * Computes positive {@code lgamma(xHigh + xLow)} as a nonoverlapping pair.
+   *
+   * <p>The split retains the 128-bit UX result that would otherwise lose 15 guard bits
+   * when packed directly as binary128.
+   */
+  static Binary128[] positiveLgammaTwoPart(
+      Binary128 xHigh, Binary128 xLow, StatusFlags st) {
+    StatusFlags local = new StatusFlags();
+    Unpacked argument = new Unpacked();
+    UxOps.addsubUnpacked(
+        UxOps.unpack(xHigh), UxOps.unpack(xLow), argument, local);
+    UxOps.normalize(argument);
+    Unpacked result = argument.exponent < 5
+        ? reduced(argument.copy(), local)
+        : asymptotic(argument.copy(), local);
+
+    Binary128 high = UxOps.pack(
+        result, RoundingMode.TIES_TO_EVEN, local);
+    Unpacked negativeHigh = UxOps.unpack(high);
+    UxOps.negate(negativeHigh);
+    Unpacked remainder = new Unpacked();
+    UxOps.addsubUnpacked(result, negativeHigh, remainder, local);
+    Binary128 low = UxOps.pack(
+        remainder, RoundingMode.TIES_TO_EVEN, local);
+    st.raise(local);
+    return new Binary128[] {high, low};
+  }
+
   private static Unpacked reduced(Unpacked x, StatusFlags st) {
     Unpacked original = x.copy();
     Unpacked one = ux(LgammaX.UX_ONE);

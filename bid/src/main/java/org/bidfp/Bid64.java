@@ -7,6 +7,8 @@
  */
 package org.bidfp;
 
+import java.math.BigDecimal;
+
 import org.bidfp.binary128.Binary128;
 
 /**
@@ -15,7 +17,7 @@ import org.bidfp.binary128.Binary128;
  * <p>Classification, comparisons, conversions, and add/subtract/multiply/divide
  * are checked against Intel RDFP vectors in {@code upstream/TESTS/readtest.in}.
  */
-public final class Bid64 {
+public final class Bid64 implements Comparable<Bid64> {
   private static final int UNORDERED = 2;
 
   static final long MASK_SIGN = 0x8000_0000_0000_0000L;
@@ -136,11 +138,35 @@ public final class Bid64 {
       throw new ArithmeticException("value is not exactly representable as BID64");
     }
     int biasedExponent = Math.addExact(exponent, 398);
+    if (biasedExponent < 0 || biasedExponent > 767) {
+      throw new ArithmeticException("value is outside the BID64 exponent range");
+    }
     return finite(negative, biasedExponent, Long.parseLong(digits));
   }
 
   public static Bid64 parse(String text, RoundingMode mode, StatusFlags flags) {
     return fromRawBits(Bid64Raw.fromString(text, mode, flags));
+  }
+
+  /**
+   * Converts a finite Java decimal value using the requested IEEE rounding mode.
+   *
+   * <p>The input's decimal scale is preserved when it fits the decimal64
+   * exponent and precision. Arithmetic remains independent of
+   * {@link BigDecimal}; this method is an interoperability boundary.
+   */
+  public static Bid64 fromBigDecimal(
+      BigDecimal value, RoundingMode mode, StatusFlags flags) {
+    return parse(value.toString(), mode, flags);
+  }
+
+  /**
+   * Converts a Java decimal value exactly, preserving its scale when representable.
+   *
+   * @throws ArithmeticException if the value is not exactly representable as decimal64
+   */
+  public static Bid64 fromBigDecimalExact(BigDecimal value) {
+    return parseExact(value.toString());
   }
 
   public static Bid64 fromDouble(double value, RoundingMode mode, StatusFlags flags) {
@@ -201,6 +227,21 @@ public final class Bid64 {
       return sign + "Infinity";
     }
     return sign + significand() + "E" + signedExponent(biasedExponent() - 398);
+  }
+
+  /**
+   * Returns the exact finite value as a Java decimal, preserving its quantum as scale.
+   *
+   * <p>{@link BigDecimal} has no signed zero, infinity, or NaN. Consequently,
+   * signed zero loses its sign and non-finite values are rejected.
+   *
+   * @throws ArithmeticException if this value is infinite or NaN
+   */
+  public BigDecimal toBigDecimal() {
+    if (!isFinite()) {
+      throw new ArithmeticException("non-finite BID64 has no BigDecimal representation");
+    }
+    return new BigDecimal(toCanonicalString());
   }
 
   public boolean isSigned() {
@@ -311,6 +352,121 @@ public final class Bid64 {
 
   public Bid64 sqrt(RoundingMode mode, StatusFlags flags) {
     return fromRawBits(Bid64Raw.sqrt(bits, mode, flags));
+  }
+
+  public Bid64 cbrt(RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.cbrt(bits, mode, flags));
+  }
+
+  public Bid64 exp(RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.exp(bits, mode, flags));
+  }
+
+  public Bid64 expm1(RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.expm1(bits, mode, flags));
+  }
+
+  public Bid64 exp2(RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.exp2(bits, mode, flags));
+  }
+
+  public Bid64 exp10(RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.exp10(bits, mode, flags));
+  }
+
+  public Bid64 log(RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.log(bits, mode, flags));
+  }
+
+  public Bid64 log10(RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.log10(bits, mode, flags));
+  }
+
+  public Bid64 log2(RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.log2(bits, mode, flags));
+  }
+
+  public Bid64 log1p(RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.log1p(bits, mode, flags));
+  }
+
+  public Bid64 pow(Bid64 y, RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.pow(bits, y.bits, mode, flags));
+  }
+
+  public Bid64 hypot(Bid64 y, RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.hypot(bits, y.bits, mode, flags));
+  }
+
+  public Bid64 sin(RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.sin(bits, mode, flags));
+  }
+
+  public Bid64 cos(RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.cos(bits, mode, flags));
+  }
+
+  public Bid64 tan(RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.tan(bits, mode, flags));
+  }
+
+  public Bid64 asin(RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.asin(bits, mode, flags));
+  }
+
+  public Bid64 acos(RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.acos(bits, mode, flags));
+  }
+
+  public Bid64 atan(RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.atan(bits, mode, flags));
+  }
+
+  /**
+   * Two-argument arctangent. This value is y; {@code x} is the x argument.
+   */
+  public Bid64 atan2(Bid64 x, RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.atan2(bits, x.bits, mode, flags));
+  }
+
+  public Bid64 sinh(RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.sinh(bits, mode, flags));
+  }
+
+  public Bid64 cosh(RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.cosh(bits, mode, flags));
+  }
+
+  public Bid64 tanh(RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.tanh(bits, mode, flags));
+  }
+
+  public Bid64 asinh(RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.asinh(bits, mode, flags));
+  }
+
+  public Bid64 acosh(RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.acosh(bits, mode, flags));
+  }
+
+  public Bid64 atanh(RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.atanh(bits, mode, flags));
+  }
+
+  public Bid64 erf(RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.erf(bits, mode, flags));
+  }
+
+  public Bid64 erfc(RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.erfc(bits, mode, flags));
+  }
+
+  public Bid64 tgamma(RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.tgamma(bits, mode, flags));
+  }
+
+  public Bid64 lgamma(RoundingMode mode, StatusFlags flags) {
+    return fromRawBits(Bid64Raw.lgamma(bits, mode, flags));
   }
 
   public Bid64 fma(Bid64 y, Bid64 z, RoundingMode mode, StatusFlags flags) {
@@ -793,6 +949,26 @@ public final class Bid64 {
 
   private static String signedExponent(int exponent) {
     return exponent >= 0 ? "+" + exponent : Integer.toString(exponent);
+  }
+
+  /**
+   * Orders all encodings using IEEE 754 {@code totalOrder}.
+   *
+   * <p>Unlike the quiet comparison methods, this ordering includes NaNs,
+   * signed zeros, and distinct cohorts and is consistent with bitwise
+   * {@link #equals(Object)}.
+   */
+  @Override
+  public int compareTo(Bid64 other) {
+    if (bits == other.bits) {
+      return 0;
+    }
+    boolean before = totalOrder(other);
+    boolean after = other.totalOrder(this);
+    if (before != after) {
+      return before ? -1 : 1;
+    }
+    return Long.compareUnsigned(bits, other.bits);
   }
 
   @Override

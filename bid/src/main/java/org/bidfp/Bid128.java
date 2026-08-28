@@ -7,10 +7,12 @@
  */
 package org.bidfp;
 
+import java.math.BigDecimal;
+
 import org.bidfp.binary128.Binary128;
 
 /** IEEE 754 decimal128 value in Binary Integer Decimal (BID) encoding. */
-public final class Bid128 {
+public final class Bid128 implements Comparable<Bid128> {
   private static final int UNORDERED = 2;
 
   static final long MASK_SIGN = 0x8000_0000_0000_0000L;
@@ -100,6 +102,9 @@ public final class Bid128 {
           .add(digits.charAt(i) - '0');
     }
     int biasedExponent = Math.addExact(exponent, 6176);
+    if (biasedExponent < 0 || biasedExponent > 12_287) {
+      throw new ArithmeticException("value is outside the BID128 exponent range");
+    }
     return finite(negative, biasedExponent, coefficient.high(), coefficient.low());
   }
 
@@ -107,6 +112,27 @@ public final class Bid128 {
     long[] result = new long[2];
     Bid128Raw.fromString(text, mode, flags, result);
     return fromRawBits(result[0], result[1]);
+  }
+
+  /**
+   * Converts a finite Java decimal value using the requested IEEE rounding mode.
+   *
+   * <p>The input's decimal scale is preserved when it fits the decimal128
+   * exponent and precision. Arithmetic remains independent of
+   * {@link BigDecimal}; this method is an interoperability boundary.
+   */
+  public static Bid128 fromBigDecimal(
+      BigDecimal value, RoundingMode mode, StatusFlags flags) {
+    return parse(value.toString(), mode, flags);
+  }
+
+  /**
+   * Converts a Java decimal value exactly, preserving its scale when representable.
+   *
+   * @throws ArithmeticException if the value is not exactly representable as decimal128
+   */
+  public static Bid128 fromBigDecimalExact(BigDecimal value) {
+    return parseExact(value.toString());
   }
 
   public static Bid128 fromLong(long value, RoundingMode mode, StatusFlags flags) {
@@ -223,6 +249,21 @@ public final class Bid128 {
     return sign + coefficient().toDecimalString() + "E" + exponentText;
   }
 
+  /**
+   * Returns the exact finite value as a Java decimal, preserving its quantum as scale.
+   *
+   * <p>{@link BigDecimal} has no signed zero, infinity, or NaN. Consequently,
+   * signed zero loses its sign and non-finite values are rejected.
+   *
+   * @throws ArithmeticException if this value is infinite or NaN
+   */
+  public BigDecimal toBigDecimal() {
+    if (!isFinite()) {
+      throw new ArithmeticException("non-finite BID128 has no BigDecimal representation");
+    }
+    return new BigDecimal(toCanonicalString());
+  }
+
   public boolean isSigned() {
     return (high & MASK_SIGN) != 0;
   }
@@ -326,6 +367,177 @@ public final class Bid128 {
   public Bid128 sqrt(RoundingMode mode, StatusFlags flags) {
     long[] result = new long[2];
     Bid128Raw.sqrt(high, low, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 cbrt(RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.cbrt(high, low, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 exp(RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.exp(high, low, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 expm1(RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.expm1(high, low, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 exp2(RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.exp2(high, low, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 exp10(RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.exp10(high, low, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 log(RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.log(high, low, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 log10(RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.log10(high, low, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 log2(RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.log2(high, low, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 log1p(RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.log1p(high, low, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 pow(Bid128 y, RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.pow(high, low, y.high, y.low, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 hypot(Bid128 y, RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.hypot(high, low, y.high, y.low, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 sin(RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.sin(high, low, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 cos(RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.cos(high, low, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 tan(RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.tan(high, low, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 asin(RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.asin(high, low, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 acos(RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.acos(high, low, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 atan(RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.atan(high, low, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  /**
+   * Two-argument arctangent. This value is y; {@code x} is the x argument.
+   */
+  public Bid128 atan2(Bid128 x, RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.atan2(high, low, x.high, x.low, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 sinh(RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.sinh(high, low, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 cosh(RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.cosh(high, low, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 tanh(RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.tanh(high, low, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 asinh(RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.asinh(high, low, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 acosh(RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.acosh(high, low, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 atanh(RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.atanh(high, low, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 erf(RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.erf(high, low, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 erfc(RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.erfc(high, low, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 tgamma(RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.tgamma(high, low, mode, flags, result);
+    return fromRawBits(result[0], result[1]);
+  }
+
+  public Bid128 lgamma(RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.lgamma(high, low, mode, flags, result);
     return fromRawBits(result[0], result[1]);
   }
 
@@ -804,6 +1016,27 @@ public final class Bid128 {
       result[exponent] = result[exponent - 1] * 10;
     }
     return result;
+  }
+
+  /**
+   * Orders all encodings using IEEE 754 {@code totalOrder}.
+   *
+   * <p>Unlike the quiet comparison methods, this ordering includes NaNs,
+   * signed zeros, and distinct cohorts and is consistent with bitwise
+   * {@link #equals(Object)}.
+   */
+  @Override
+  public int compareTo(Bid128 other) {
+    if (high == other.high && low == other.low) {
+      return 0;
+    }
+    boolean before = totalOrder(other);
+    boolean after = other.totalOrder(this);
+    if (before != after) {
+      return before ? -1 : 1;
+    }
+    int highComparison = Long.compareUnsigned(high, other.high);
+    return highComparison != 0 ? highComparison : Long.compareUnsigned(low, other.low);
   }
 
   @Override

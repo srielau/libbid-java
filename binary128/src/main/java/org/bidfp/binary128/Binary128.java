@@ -27,9 +27,11 @@ package org.bidfp.binary128;
  * <p>Quiet NaNs have high bit 47 set ({@code 0x0000800000000000} in
  * {@code high}). Signaling NaNs have a nonzero payload with that bit clear.
  *
- * <p>This type is the public seam for DPML kernels. Arithmetic takes an
- * explicit {@link RoundingMode} and {@link StatusFlags}; there is no process
- * global FPSR. BID convert wrappers stay in {@code org.bidfp}.
+ * <p>This type is the packed seam for the bounded DPML engine used by this
+ * libbid port. It is not a complete general-purpose binary128 Java type.
+ * Arithmetic takes an explicit {@link RoundingMode} and {@link StatusFlags};
+ * there is no process-global FPSR. BID convert wrappers stay in
+ * {@code org.bidfp}.
  */
 public final class Binary128 {
   public static final int BIAS = 16383;

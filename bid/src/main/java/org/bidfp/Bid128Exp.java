@@ -32,6 +32,10 @@ final class Bid128Exp {
       Binary128.fromRawBits(0x400c_57c0_0000_0000L, 0L);
   private static final Binary128 F128_NEG_11000 =
       Binary128.fromRawBits(0xc00c_57c0_0000_0000L, 0L);
+  private static final Binary128 F128_15000 =
+      Binary128.fromRawBits(0x400c_d4c0_0000_0000L, 0L);
+  private static final Binary128 F128_NEG_15000 =
+      Binary128.fromRawBits(0xc00c_d4c0_0000_0000L, 0L);
   private static final Binary128 F128_ZERO =
       Binary128.fromRawBits(0L, 0L);
 
@@ -113,18 +117,41 @@ final class Bid128Exp {
 
   static void expBinary(
       Binary128 value, RoundingMode mode, StatusFlags flags, long[] out) {
+    expBinaryTwoPart(value, F128_ZERO, mode, flags, out);
+  }
+
+  static void expBinaryTwoPart(
+      Binary128 high,
+      Binary128 low,
+      RoundingMode mode,
+      StatusFlags flags,
+      long[] out) {
     org.bidfp.binary128.RoundingMode binaryMode = BidTranscendental.binaryMode(mode);
     org.bidfp.binary128.StatusFlags local = new org.bidfp.binary128.StatusFlags();
-    Binary128 reduced = value;
+    if (greaterTwoPart(high, low, F128_15000, binaryMode)) {
+      Bid128Raw.mul(
+          EXP_11000.highBits(), EXP_11000.lowBits(),
+          EXP_11000.highBits(), EXP_11000.lowBits(),
+          mode, flags, out);
+      return;
+    }
+    if (lessTwoPart(high, low, F128_NEG_15000, binaryMode)) {
+      Bid128Raw.mul(
+          TEN_POW_N6000.highBits(), TEN_POW_N6000.lowBits(),
+          TEN_POW_N6000.highBits(), TEN_POW_N6000.lowBits(),
+          mode, flags, out);
+      return;
+    }
+    Binary128 reduced = high;
     Bid128 scale = null;
-    if (greater(value, F128_11000, binaryMode, local)) {
-      reduced = Dpml.sub(value, F128_11000, binaryMode, local);
+    if (greaterTwoPart(high, low, F128_11000, binaryMode)) {
+      reduced = Dpml.sub(high, F128_11000, binaryMode, local);
       scale = EXP_11000;
-    } else if (less(value, F128_NEG_11000, binaryMode, local)) {
-      reduced = Dpml.add(value, F128_11000, binaryMode, local);
+    } else if (lessTwoPart(high, low, F128_NEG_11000, binaryMode)) {
+      reduced = Dpml.add(high, F128_11000, binaryMode, local);
       scale = EXP_M11000;
     }
-    Binary128 exp = combineExp(reduced, F128_ZERO, binaryMode, local);
+    Binary128 exp = Dpml.expTwoPart(reduced, low, binaryMode, local);
     flags.raise(local.bits());
     BidConvert.fromBinary128To128(
         exp.highBits(), exp.lowBits(), mode, flags, out);
@@ -132,6 +159,28 @@ final class Bid128Exp {
       Bid128Raw.mul(
           out[0], out[1], scale.highBits(), scale.lowBits(), mode, flags, out);
     }
+  }
+
+  private static boolean greaterTwoPart(
+      Binary128 high,
+      Binary128 low,
+      Binary128 boundary,
+      org.bidfp.binary128.RoundingMode mode) {
+    if (greater(high, boundary, mode, new org.bidfp.binary128.StatusFlags())) {
+      return true;
+    }
+    return high.equals(boundary) && !low.isZero() && !low.isSigned();
+  }
+
+  private static boolean lessTwoPart(
+      Binary128 high,
+      Binary128 low,
+      Binary128 boundary,
+      org.bidfp.binary128.RoundingMode mode) {
+    if (less(high, boundary, mode, new org.bidfp.binary128.StatusFlags())) {
+      return true;
+    }
+    return high.equals(boundary) && !low.isZero() && low.isSigned();
   }
 
   private static Binary128 combineExp(

@@ -167,6 +167,19 @@ final class Bid128Lgamma {
         flags);
   }
 
+  static Binary128[] positiveBinaryLgammaTwoPart(
+      long hi,
+      long lo,
+      org.bidfp.binary128.StatusFlags flags) {
+    long[] hiPart = new long[2];
+    long[] loPart = new long[2];
+    BidBinary128Convert.toBinary128TwoPart(hi, lo, hiPart, loPart);
+    return Dpml.positiveLgammaTwoPart(
+        Binary128.fromRawBits(hiPart[0], hiPart[1]),
+        Binary128.fromRawBits(loPart[0], loPart[1]),
+        flags);
+  }
+
   private static Binary128 interpolatedLgamma(
       Binary128 xHi,
       Binary128 xLo,

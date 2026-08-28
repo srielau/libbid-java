@@ -9,9 +9,14 @@
 package org.bidfp.binary128;
 
 /**
- * Public DPML facade: packed binary128 libm with explicit rounding and
- * status. Kernels live in {@code Dpml*} classes; this type is the stable
- * entry surface.
+ * Bounded facade for the packed DPML operations used by this libbid port.
+ *
+ * <p>This is the stable entry surface for the emulated {@code bid_f128_*}
+ * engine used by BID64/BID128 transcendentals. It is not a complete IEEE
+ * binary128 language binding or a replacement for a general-purpose
+ * {@code _Float128} math library. Supported operations are exactly those
+ * declared here; the wider Intel DPML source tree is not part of this API.
+ * Kernels live in package-private {@code Dpml*} classes.
  */
 public final class Dpml {
   private Dpml() {
@@ -39,6 +44,18 @@ public final class Dpml {
 
   public static Binary128 exp(Binary128 x, RoundingMode r, StatusFlags s) {
     return DpmlExp.exp(x, r, s);
+  }
+
+  /**
+   * Integration helper for libbid: evaluates {@code exp(xHigh + xLow)}
+   * without rounding the sum before range reduction.
+   *
+   * <p>This method exists to preserve BID128 gamma accuracy and is not a
+   * general expansion-arithmetic API.
+   */
+  public static Binary128 expTwoPart(
+      Binary128 xHigh, Binary128 xLow, RoundingMode r, StatusFlags s) {
+    return DpmlExp.expTwoPart(xHigh, xLow, r, s);
   }
 
   public static Binary128 expm1(Binary128 x, RoundingMode r, StatusFlags s) {
@@ -140,6 +157,18 @@ public final class Dpml {
 
   public static Binary128 lgamma(Binary128 x, RoundingMode r, StatusFlags s) {
     return DpmlGamma.lgamma(x, r, s);
+  }
+
+  /**
+   * Integration helper for libbid: returns a nonoverlapping high/low result
+   * for positive {@code lgamma(xHigh + xLow)}.
+   *
+   * <p>This method retains DPML guard bits needed by BID128 {@code tgamma}
+   * and is not a general expansion-arithmetic API.
+   */
+  public static Binary128[] positiveLgammaTwoPart(
+      Binary128 xHigh, Binary128 xLow, StatusFlags s) {
+    return DpmlGamma.positiveLgammaTwoPart(xHigh, xLow, s);
   }
 
   public static Binary128 tgamma(Binary128 x, RoundingMode r, StatusFlags s) {

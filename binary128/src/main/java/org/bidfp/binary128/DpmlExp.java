@@ -20,6 +20,23 @@ public final class DpmlExp {
     return expCommon(x, false, mode, st);
   }
 
+  /**
+   * Computes {@code exp(xHigh + xLow)} without first rounding the sum to binary128.
+   */
+  static Binary128 expTwoPart(
+      Binary128 xHigh, Binary128 xLow, RoundingMode mode, StatusFlags st) {
+    if (!xHigh.isFinite() || xLow.isZero()) {
+      return exp(xHigh, mode, st);
+    }
+    StatusFlags local = new StatusFlags();
+    Unpacked argument = new Unpacked();
+    UxOps.addsubUnpacked(
+        UxOps.unpack(xHigh), UxOps.unpack(xLow), argument, local);
+    Unpacked result = DpmlExpHyperKernel.exp(argument, local);
+    st.raise(local);
+    return UxOps.pack(result, mode, st);
+  }
+
   public static Binary128 exp2(Binary128 x, RoundingMode mode, StatusFlags st) {
     if (x.isNaN()) {
       return DpmlExpHyperKernel.quietNaN(x, st);

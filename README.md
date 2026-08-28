@@ -28,18 +28,36 @@ and tests are Apache License 2.0. Keep `LICENSE`, `LICENSE-INTEL`, and
   Intel's per-vector ULP offsets and INVALID/DIVBYZERO flag rules.
 - DBR adapters: Compare/Equals, Sign, RoundToScale, Canonicalize, Decimal
 - Dual API: `Bid64`/`Bid128` objects and `Bid64Raw`/`Bid128Raw`, plus
-  `DecFloat16Compat`/`DecFloat34Compat` JNI-shaped methods
+  `DecFloat16Compat`/`DecFloat34Compat` JNI-shaped methods; the object and raw
+  APIs both expose the complete in-scope transcendental set
+- Java interop: exact or rounded `BigDecimal` conversion and
+  `Comparable` ordering via IEEE 754 `totalOrder`
 
-This git tree publishes two JARs:
+This git tree builds two JARs:
 
 - `org.bidfp:libbid-java` (`bid/`) - BID64/BID128
-- `org.bidfp:binary128` (`binary128/`) - packed binary128 and DPML kernels
+- `org.bidfp:binary128` (`binary128/`) - the bounded packed DPML engine used
+  by BID transcendentals
 
-Spark should depend on `libbid-java` (it pulls `binary128`). DPML notes:
-`binary128/AGENTS.md`.
+Java users seeking the libbid API should depend on `libbid-java`, which pulls
+`binary128` transitively. The binary128 artifact is not a complete
+general-purpose IEEE binary128 library; it contains the representation,
+arithmetic, and Intel `bid_f128_*` kernel families needed by this port. Its
+supported surface and limitations are documented in `binary128/README.md`.
 
-Not in this release: BID32, BID256, binary80, mixed-width arithmetic,
-global rounding/flag modes.
+Out of scope: BID32, BID256, binary80, and mixed-width arithmetic.
+
+As in Intel's `readtest.c`, BID64/BID128 transcendental compatibility covers
+the INVALID and DIVBYZERO status bits. Intel's vectors contain contradictory
+INEXACT, OVERFLOW, and UNDERFLOW expectations for identical calls and its test
+driver deliberately masks those bits. This port therefore does not specify
+those three status bits for transcendental operations. Core arithmetic and
+conversion operations continue to report their full tested status.
+
+`Bid64` and `Bid128` deliberately do not extend `java.lang.Number`.
+`Number` conversions provide no rounding-mode or status channel, while this
+library keeps both explicit. Use `toLong`, `toFloat`, `toDouble`, or
+`toBigDecimal` and their corresponding factories instead.
 
 ## Build and test
 
@@ -87,6 +105,21 @@ $JAVA_HOME/bin/java -jar binary128/target/binary128-benchmarks.jar \
 Package: `org.bidfp`. This artifact is not published to Maven Central yet.
 The `org.bidfp` groupId will need a matching namespace (domain or Central
 verification) before a Central release. Do not publish as `org.apache.spark`.
+
+## Release
+
+The `release` Maven profile attaches source and javadoc JARs, signs every
+artifact, and uploads through Sonatype's Central Portal plugin. Publishing is
+manual after Central validates the upload.
+
+Before the first release:
+
+1. Verify ownership of the `org.bidfp` namespace in Central Portal.
+2. Configure a `central` server token in the user's Maven `settings.xml`.
+3. Configure a GPG signing key without storing credentials in this repository.
+4. Replace the `SNAPSHOT` version with the intended release version.
+5. Run `mvn -Prelease deploy`, review the validated deployment in Central, and
+   publish it there.
 
 ## Porting rules
 
