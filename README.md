@@ -59,10 +59,13 @@ mvn test
 ```bash
 mvn -Pjmh clean package
 $JAVA_HOME/bin/java -jar bid/target/benchmarks.jar '.*BidJmhBenchmark.*'
+$JAVA_HOME/bin/java -jar binary128/target/binary128-benchmarks.jar \
+  '.*Binary128JmhBenchmark.*'
 ```
 
 Workloads compare BID64/BID128 with `MathContext.DECIMAL64` /
-`DECIMAL128` on equivalent operands.
+`DECIMAL128` on equivalent operands. The binary128 suite covers arithmetic and
+all public DPML kernel families.
 
 ## Coordinates
 

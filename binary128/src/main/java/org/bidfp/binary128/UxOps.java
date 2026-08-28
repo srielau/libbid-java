@@ -84,10 +84,13 @@ public final class UxOps {
     } else {
       shift = 64 + Long.numberOfLeadingZeros(u.fracLo);
     }
-    long[] t = new long[2];
-    Wide.shiftLeft128(u.fracHi, u.fracLo, shift, t);
-    u.fracHi = t[0];
-    u.fracLo = t[1];
+    if (shift >= 64) {
+      u.fracHi = u.fracLo << (shift - 64);
+      u.fracLo = 0L;
+    } else {
+      u.fracHi = (u.fracHi << shift) | (u.fracLo >>> (64 - shift));
+      u.fracLo <<= shift;
+    }
     u.exponent -= shift;
     return shift;
   }
@@ -110,9 +113,44 @@ public final class UxOps {
     if (u.klass == Unpacked.CLASS_ZERO) {
       return u.sign != 0 ? Binary128.NEGATIVE_ZERO : Binary128.ZERO;
     }
+    int biased = u.exponent + F_EXP_BIAS - 1;
+    if (u.fracHi < 0 && biased > 0 && biased < 0x7ffe) {
+      long discarded = u.fracLo & 0x7fffL;
+      long fractionHigh = (u.fracHi >>> F_EXP_WIDTH)
+          & Binary128.MASK_FRACTION_HIGH;
+      long fractionLow = (u.fracHi << CSHIFT) | (u.fracLo >>> F_EXP_WIDTH);
+      if (discarded != 0L) {
+        status.raise(StatusFlags.INEXACT);
+        if (roundIncrement(u.sign != 0, fractionLow, discarded, mode)) {
+          fractionLow++;
+          if (fractionLow == 0L) {
+            fractionHigh++;
+          }
+        }
+      }
+      if ((fractionHigh & ~Binary128.MASK_FRACTION_HIGH) != 0L) {
+        biased++;
+        fractionHigh = 0L;
+        fractionLow = 0L;
+      }
+      return Binary128.fromFields(
+          u.sign != 0, biased, fractionHigh, fractionLow);
+    }
     BigInteger fraction = Wide.u128(u.fracHi, u.fracLo);
     return IeeeRound.binary128(
         u.sign != 0, fraction, BigInteger.ONE, u.exponent - 128, mode, status);
+  }
+
+  private static boolean roundIncrement(
+      boolean negative, long fractionLow, long discarded, RoundingMode mode) {
+    return switch (mode) {
+      case TOWARD_ZERO -> false;
+      case TOWARD_POSITIVE -> !negative;
+      case TOWARD_NEGATIVE -> negative;
+      case TIES_AWAY -> discarded >= 0x4000L;
+      case TIES_TO_EVEN -> discarded > 0x4000L
+          || (discarded == 0x4000L && (fractionLow & 1L) != 0L);
+    };
   }
 
   private static Binary128 exactAdd(
@@ -241,43 +279,71 @@ public final class UxOps {
       sign = x.sign;
     }
     int shift = x.exponent - y.exponent;
-    long[] t = new long[2];
-    long sticky = Wide.shiftRight128Sticky(y.fracHi, y.fracLo, shift, t);
-    long yHi = t[0];
-    long yLo = t[1];
+    long yHi;
+    long yLo;
+    long sticky;
+    if (shift <= 0) {
+      yHi = y.fracHi;
+      yLo = y.fracLo;
+      sticky = 0L;
+    } else if (shift >= 128) {
+      yHi = 0L;
+      yLo = 0L;
+      sticky = 1L;
+    } else if (shift >= 64) {
+      int lowShift = shift - 64;
+      yHi = 0L;
+      yLo = lowShift == 0 ? y.fracHi : y.fracHi >>> lowShift;
+      long lost = y.fracLo;
+      if (lowShift != 0) {
+        lost |= y.fracHi & ((1L << lowShift) - 1L);
+      }
+      sticky = lost == 0L ? 0L : 1L;
+    } else {
+      yHi = y.fracHi >>> shift;
+      yLo = (y.fracHi << (64 - shift)) | (y.fracLo >>> shift);
+      sticky = (y.fracLo & ((1L << shift) - 1L)) == 0L ? 0L : 1L;
+    }
     boolean sameSign = a.sign == b.sign;
     if (x == b) {
       sameSign = a.sign == b.sign;
     }
     sameSign = (a.sign ^ b.sign) == 0;
     if (sameSign) {
-      boolean ov = Wide.add128(x.fracHi, x.fracLo, yHi, yLo, t);
+      long sumLo = x.fracLo + yLo;
+      long carry = Long.compareUnsigned(sumLo, x.fracLo) < 0 ? 1L : 0L;
+      long highBase = x.fracHi + yHi;
+      long sumHi = highBase + carry;
+      boolean ov = Long.compareUnsigned(highBase, x.fracHi) < 0
+          || (carry != 0L && Long.compareUnsigned(sumHi, highBase) < 0);
       r.sign = sign;
       r.klass = Unpacked.CLASS_NORM;
       r.signaling = false;
       if (ov) {
-        sticky |= t[1] & 1L;
-        r.fracHi = Unpacked.UX_MSB | (t[0] >>> 1);
-        r.fracLo = (t[0] << 63) | (t[1] >>> 1);
+        sticky |= sumLo & 1L;
+        r.fracHi = Unpacked.UX_MSB | (sumHi >>> 1);
+        r.fracLo = (sumHi << 63) | (sumLo >>> 1);
         r.exponent = x.exponent + 1;
       } else {
-        r.fracHi = t[0];
-        r.fracLo = t[1];
+        r.fracHi = sumHi;
+        r.fracLo = sumLo;
         r.exponent = x.exponent;
       }
       if (sticky != 0L) {
         r.fracLo |= 1L;
       }
     } else {
-      Wide.sub128(x.fracHi, x.fracLo, yHi, yLo, t);
+      long borrow = Long.compareUnsigned(x.fracLo, yLo) < 0 ? 1L : 0L;
+      long differenceHi = x.fracHi - yHi - borrow;
+      long differenceLo = x.fracLo - yLo;
       if (sticky != 0L) {
-        long bbit = Long.compareUnsigned(t[1], 1L) < 0 ? 1L : 0L;
-        t[1] -= 1L;
-        t[0] -= bbit;
+        long stickyBorrow = differenceLo == 0L ? 1L : 0L;
+        differenceLo--;
+        differenceHi -= stickyBorrow;
       }
       r.sign = sign;
-      r.fracHi = t[0];
-      r.fracLo = t[1];
+      r.fracHi = differenceHi;
+      r.fracLo = differenceLo;
       r.exponent = x.exponent;
       r.klass = Unpacked.CLASS_NORM;
       r.signaling = false;
@@ -342,20 +408,41 @@ public final class UxOps {
     }
     normalize(a);
     normalize(b);
-    long[] p = new long[4];
-    Wide.mul128x128(a.fracHi, a.fracLo, b.fracHi, b.fracLo, p);
+    long p0 = a.fracLo * b.fracLo;
+    long p0h = Wide.umulh(a.fracLo, b.fracLo);
+    long p1l = a.fracLo * b.fracHi;
+    long p1h = Wide.umulh(a.fracLo, b.fracHi);
+    long p2l = a.fracHi * b.fracLo;
+    long p2h = Wide.umulh(a.fracHi, b.fracLo);
+    long p3l = a.fracHi * b.fracHi;
+    long p3h = Wide.umulh(a.fracHi, b.fracHi);
+
+    long product1 = p0h + p1l;
+    long carry = Long.compareUnsigned(product1, p1l) < 0 ? 1L : 0L;
+    long product2 = p1h + carry;
+    long product3 = Long.compareUnsigned(product2, p1h) < 0 ? 1L : 0L;
+    product1 += p2l;
+    carry = Long.compareUnsigned(product1, p2l) < 0 ? 1L : 0L;
+    long oldProduct2 = product2;
+    product2 += p2h + carry;
+    product3 += Long.compareUnsigned(product2, oldProduct2) < 0 ? 1L : 0L;
+    oldProduct2 = product2;
+    product2 += p3l;
+    product3 += Long.compareUnsigned(product2, oldProduct2) < 0 ? 1L : 0L;
+    product3 += p3h;
+
     int exp = a.exponent + b.exponent;
     long hi;
     long lo;
     long sticky;
-    if ((p[0] & Unpacked.UX_MSB) != 0L) {
-      hi = p[0];
-      lo = p[1];
-      sticky = p[2] | p[3];
+    if ((product3 & Unpacked.UX_MSB) != 0L) {
+      hi = product3;
+      lo = product2;
+      sticky = product1 | p0;
     } else {
-      hi = (p[0] << 1) | (p[1] >>> 63);
-      lo = (p[1] << 1) | (p[2] >>> 63);
-      sticky = (p[2] << 1) | p[3];
+      hi = (product3 << 1) | (product2 >>> 63);
+      lo = (product2 << 1) | (product1 >>> 63);
+      sticky = (product1 << 1) | p0;
       exp--;
     }
     if (sticky != 0L) {

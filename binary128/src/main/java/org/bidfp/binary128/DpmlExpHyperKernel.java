@@ -8,7 +8,6 @@
  */
 package org.bidfp.binary128;
 
-import java.math.BigInteger;
 import org.bidfp.binary128.tables.ExpX;
 import org.bidfp.binary128.tables.PowX;
 
@@ -22,7 +21,6 @@ final class DpmlExpHyperKernel {
   private static final int EXP2_TINY_EXPONENT = -114;
   private static final int FORCED_OVERFLOW_EXPONENT = 131071;
   private static final int FORCED_UNDERFLOW_EXPONENT = -131072;
-  private static final BigInteger MASK_64 = BigInteger.ONE.shiftLeft(64).subtract(BigInteger.ONE);
 
   private DpmlExpHyperKernel() {
   }
@@ -131,11 +129,10 @@ final class DpmlExpHyperKernel {
     long scale = 0;
     Unpacked reduced = x.copy();
     if (exponent >= 0) {
-      BigInteger fraction = unsigned128(x.fracHi, x.fracLo);
-      int fractionalBits = 128 - exponent;
-      BigInteger rounded = fraction.add(BigInteger.ONE.shiftLeft(fractionalBits - 1))
-          .shiftRight(fractionalBits);
-      scale = rounded.longValueExact();
+      scale = exponent == 0
+          ? 1L
+          : (x.fracHi >>> (64 - exponent))
+              + ((x.fracHi >>> (63 - exponent)) & 1L);
       if (x.sign != 0) {
         scale = -scale;
       }
@@ -211,20 +208,11 @@ final class DpmlExpHyperKernel {
   }
 
   private static long multiplyHighUnsigned(long x, long y) {
-    return unsigned(x).multiply(unsigned(y)).shiftRight(64).longValue();
+    return Wide.umulh(x, y);
   }
 
   private static long[] multiply128(long x, long y) {
-    BigInteger product = unsigned(x).multiply(unsigned(y));
-    return new long[] {product.shiftRight(64).longValue(), product.longValue()};
-  }
-
-  private static BigInteger unsigned(long value) {
-    return BigInteger.valueOf(value).and(MASK_64);
-  }
-
-  private static BigInteger unsigned128(long high, long low) {
-    return unsigned(high).shiftLeft(64).or(unsigned(low));
+    return new long[] {Wide.umulh(x, y), x * y};
   }
 
   static final class Reduction {
