@@ -9,6 +9,8 @@ package org.bidfp;
 
 import java.util.Objects;
 
+import org.bidfp.binary128.Dpml;
+
 /**
  * Raw BID64 kernel matching Intel RDFP payload layout ({@code long} bits) and
  * JNI marshalling ({@code int} rounding codes, {@code int[]} status).
@@ -338,6 +340,16 @@ public final class Bid64Raw {
     return BidConvert.toBinary32From64(x, mode, flags);
   }
 
+  public static void toBinary128(
+      long x, RoundingMode mode, StatusFlags flags, long[] out) {
+    BidConvert.toBinary128From64(x, mode, flags, out);
+  }
+
+  public static long fromBinary128(
+      long high, long low, RoundingMode mode, StatusFlags flags) {
+    return BidConvert.fromBinary128To64(high, low, mode, flags);
+  }
+
   public static void toBid128(long x, long[] payloadOut, StatusFlags flags) {
     BidConvert.bid64ToBid128(x, payloadOut, flags);
   }
@@ -440,7 +452,7 @@ public final class Bid64Raw {
   }
 
   public static long cbrt(long x, RoundingMode mode, StatusFlags flags) {
-    return BidTranscendental.cbrt64(x, mode, flags);
+    return BidTranscendental.unary64(x, mode, flags, Dpml::cbrt);
   }
 
   public static long rem(long x, long y, StatusFlags flags) {
@@ -528,111 +540,111 @@ public final class Bid64Raw {
   }
 
   public static long exp(long x, RoundingMode mode, StatusFlags flags) {
-    return BidTranscendental.unary64(x, mode, flags, Math::exp);
+    return Bid64Exp.exp(x, mode, flags);
   }
 
   public static long expm1(long x, RoundingMode mode, StatusFlags flags) {
-    return BidTranscendental.unary64(x, mode, flags, Math::expm1);
+    return BidTranscendental.unary64(x, mode, flags, Dpml::expm1);
   }
 
   public static long exp2(long x, RoundingMode mode, StatusFlags flags) {
-    return BidTranscendental.unary64(x, mode, flags, v -> Math.pow(2.0, v));
+    return Bid64Exp.exp2(x, mode, flags);
   }
 
   public static long exp10(long x, RoundingMode mode, StatusFlags flags) {
-    return BidTranscendental.unary64(x, mode, flags, v -> Math.pow(10.0, v));
+    return Bid64Exp.exp10(x, mode, flags);
   }
 
   public static long log(long x, RoundingMode mode, StatusFlags flags) {
-    return BidTranscendental.unary64(x, mode, flags, Math::log);
+    return Bid64Log.log(x, mode, flags);
   }
 
   public static long log10(long x, RoundingMode mode, StatusFlags flags) {
-    return BidTranscendental.unary64(x, mode, flags, Math::log10);
+    return Bid64Log.log10(x, mode, flags);
   }
 
   public static long log2(long x, RoundingMode mode, StatusFlags flags) {
-    return BidTranscendental.unary64(x, mode, flags, v -> Math.log(v) / Math.log(2.0));
+    return Bid64Log.log2(x, mode, flags);
   }
 
   public static long log1p(long x, RoundingMode mode, StatusFlags flags) {
-    return BidTranscendental.unary64(x, mode, flags, Math::log1p);
+    return Bid64Log1p.log1p(x, mode, flags);
   }
 
   public static long pow(long x, long y, RoundingMode mode, StatusFlags flags) {
-    return BidTranscendental.binary64(x, y, mode, flags, Math::pow);
+    return Bid64Pow.pow(x, y, mode, flags);
   }
 
   public static long hypot(long x, long y, RoundingMode mode, StatusFlags flags) {
-    return BidTranscendental.binary64(x, y, mode, flags, Math::hypot);
+    return BidTranscendental.hypot64(x, y, mode, flags);
   }
 
   public static long sin(long x, RoundingMode mode, StatusFlags flags) {
-    return BidTranscendental.unary64(x, mode, flags, Math::sin);
+    return Bid64Trig.sin(x, mode, flags);
   }
 
   public static long cos(long x, RoundingMode mode, StatusFlags flags) {
-    return BidTranscendental.unary64(x, mode, flags, Math::cos);
+    return Bid64Trig.cos(x, mode, flags);
   }
 
   public static long tan(long x, RoundingMode mode, StatusFlags flags) {
-    return BidTranscendental.unary64(x, mode, flags, Math::tan);
+    return Bid64Trig.tan(x, mode, flags);
   }
 
   public static long asin(long x, RoundingMode mode, StatusFlags flags) {
-    return BidTranscendental.unary64(x, mode, flags, Math::asin);
+    return Bid64Domain.asin(x, mode, flags);
   }
 
   public static long acos(long x, RoundingMode mode, StatusFlags flags) {
-    return BidTranscendental.unary64(x, mode, flags, Math::acos);
+    return Bid64Domain.acos(x, mode, flags);
   }
 
   public static long atan(long x, RoundingMode mode, StatusFlags flags) {
-    return BidTranscendental.unary64(x, mode, flags, Math::atan);
+    return BidTranscendental.unary64(x, mode, flags, Dpml::atan);
   }
 
   public static long atan2(long y, long x, RoundingMode mode, StatusFlags flags) {
-    return BidTranscendental.binary64(y, x, mode, flags, Math::atan2);
+    return BidTranscendental.binary64(y, x, mode, flags, Dpml::atan2);
   }
 
   public static long sinh(long x, RoundingMode mode, StatusFlags flags) {
-    return BidTranscendental.unary64(x, mode, flags, Math::sinh);
+    return BidTranscendental.unary64(x, mode, flags, Dpml::sinh);
   }
 
   public static long cosh(long x, RoundingMode mode, StatusFlags flags) {
-    return BidTranscendental.unary64(x, mode, flags, Math::cosh);
+    return BidTranscendental.unary64(x, mode, flags, Dpml::cosh);
   }
 
   public static long tanh(long x, RoundingMode mode, StatusFlags flags) {
-    return BidTranscendental.unary64(x, mode, flags, Math::tanh);
+    return BidTranscendental.unary64(x, mode, flags, Dpml::tanh);
   }
 
   public static long asinh(long x, RoundingMode mode, StatusFlags flags) {
-    return BidTranscendental.unary64(x, mode, flags, BidTranscendental::asinh);
+    return BidTranscendental.unary64(x, mode, flags, Dpml::asinh);
   }
 
   public static long acosh(long x, RoundingMode mode, StatusFlags flags) {
-    return BidTranscendental.unary64(x, mode, flags, BidTranscendental::acosh);
+    return Bid64Domain.acosh(x, mode, flags);
   }
 
   public static long atanh(long x, RoundingMode mode, StatusFlags flags) {
-    return BidTranscendental.unary64(x, mode, flags, BidTranscendental::atanh);
+    return Bid64Domain.atanh(x, mode, flags);
   }
 
   public static long erf(long x, RoundingMode mode, StatusFlags flags) {
-    return BidTranscendental.unary64(x, mode, flags, BidTranscendental::erf);
+    return BidTranscendental.unary64(x, mode, flags, Dpml::erf);
   }
 
   public static long erfc(long x, RoundingMode mode, StatusFlags flags) {
-    return BidTranscendental.unary64(x, mode, flags, v -> 1.0 - BidTranscendental.erf(v));
+    return BidTranscendental.unary64(x, mode, flags, Dpml::erfc);
   }
 
   public static long tgamma(long x, RoundingMode mode, StatusFlags flags) {
-    return BidTranscendental.unary64(x, mode, flags, BidTranscendental::tgamma);
+    return Bid64Tgamma.tgamma(x, mode, flags);
   }
 
   public static long lgamma(long x, RoundingMode mode, StatusFlags flags) {
-    return BidTranscendental.unary64(x, mode, flags, BidTranscendental::lgamma);
+    return Bid64Lgamma.lgamma(x, mode, flags);
   }
 
   public static long modf(long x, long[] integralOut, StatusFlags flags) {

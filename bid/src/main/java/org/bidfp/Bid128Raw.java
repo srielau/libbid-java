@@ -7,6 +7,8 @@
  */
 package org.bidfp;
 
+import org.bidfp.binary128.Dpml;
+
 /**
  * Raw BID128 kernel: {@code hi}/{@code lo} payloads, results in
  * {@code long[2]} ({@code [0]=hi}, {@code [1]=lo}) matching DBR JNI.
@@ -413,6 +415,16 @@ public final class Bid128Raw {
     return BidConvert.toBinary32From128(hi, lo, mode, flags);
   }
 
+  public static void toBinary128(
+      long hi, long lo, RoundingMode mode, StatusFlags flags, long[] out) {
+    BidConvert.toBinary128From128(hi, lo, mode, flags, out);
+  }
+
+  public static void fromBinary128(
+      long high, long low, RoundingMode mode, StatusFlags flags, long[] out) {
+    BidConvert.fromBinary128To128(high, low, mode, flags, out);
+  }
+
   public static long toBid64(long hi, long lo, RoundingMode mode, StatusFlags flags) {
     return BidConvert.bid128ToBid64(hi, lo, mode, flags);
   }
@@ -642,122 +654,158 @@ public final class Bid128Raw {
   }
 
   public static void exp(long hi, long lo, RoundingMode mode, StatusFlags flags, long[] out) {
-    BidTranscendental.unary128(hi, lo, mode, flags, Math::exp, out);
+    Bid128Exp.exp(hi, lo, mode, flags, out);
   }
 
   public static void expm1(long hi, long lo, RoundingMode mode, StatusFlags flags, long[] out) {
-    BidTranscendental.unary128(hi, lo, mode, flags, Math::expm1, out);
+    Bid128Expm1.expm1(hi, lo, mode, flags, out);
   }
 
   public static void exp2(long hi, long lo, RoundingMode mode, StatusFlags flags, long[] out) {
-    BidTranscendental.unary128(hi, lo, mode, flags, value -> Math.pow(2.0, value), out);
+    Bid128Exp2.exp2(hi, lo, mode, flags, out);
   }
 
   public static void exp10(long hi, long lo, RoundingMode mode, StatusFlags flags, long[] out) {
-    BidTranscendental.unary128(hi, lo, mode, flags, value -> Math.pow(10.0, value), out);
+    Bid128Exp10.exp10(hi, lo, mode, flags, out);
   }
 
   public static void log(long hi, long lo, RoundingMode mode, StatusFlags flags, long[] out) {
-    BidTranscendental.unary128(hi, lo, mode, flags, Math::log, out);
+    Bid128Log.log(hi, lo, mode, flags, out);
   }
 
   public static void log10(long hi, long lo, RoundingMode mode, StatusFlags flags, long[] out) {
-    BidTranscendental.unary128(hi, lo, mode, flags, Math::log10, out);
+    Bid128Log.log10(hi, lo, mode, flags, out);
   }
 
   public static void log2(long hi, long lo, RoundingMode mode, StatusFlags flags, long[] out) {
-    BidTranscendental.unary128(
-        hi, lo, mode, flags, value -> Math.log(value) / Math.log(2.0), out);
+    Bid128Log.log2(hi, lo, mode, flags, out);
   }
 
   public static void log1p(long hi, long lo, RoundingMode mode, StatusFlags flags, long[] out) {
-    BidTranscendental.unary128(hi, lo, mode, flags, Math::log1p, out);
+    Bid128Log1p.log1p(hi, lo, mode, flags, out);
   }
 
   public static void pow(
       long xh, long xl, long yh, long yl, RoundingMode mode, StatusFlags flags, long[] out) {
-    BidTranscendental.binary128(xh, xl, yh, yl, mode, flags, Math::pow, out);
+    Bid128Pow.pow(xh, xl, yh, yl, mode, flags, out);
   }
 
   public static void sin(long hi, long lo, RoundingMode mode, StatusFlags flags, long[] out) {
-    BidTranscendental.unary128(hi, lo, mode, flags, Math::sin, out);
-  }
-
-  public static void cos(long hi, long lo, RoundingMode mode, StatusFlags flags, long[] out) {
-    BidTranscendental.unary128(hi, lo, mode, flags, Math::cos, out);
+    Bid128Trig.sin(hi, lo, mode, flags, out);
   }
 
   public static void tan(long hi, long lo, RoundingMode mode, StatusFlags flags, long[] out) {
-    BidTranscendental.unary128(hi, lo, mode, flags, Math::tan, out);
+    Bid128Trig.tan(hi, lo, mode, flags, out);
+  }
+
+  public static void cos(long hi, long lo, RoundingMode mode, StatusFlags flags, long[] out) {
+    Bid128Trig.cos(hi, lo, mode, flags, out);
   }
 
   public static void asin(long hi, long lo, RoundingMode mode, StatusFlags flags, long[] out) {
-    BidTranscendental.unary128(hi, lo, mode, flags, Math::asin, out);
+    Bid128InvTrig.asin(hi, lo, mode, flags, out);
   }
 
   public static void acos(long hi, long lo, RoundingMode mode, StatusFlags flags, long[] out) {
-    BidTranscendental.unary128(hi, lo, mode, flags, Math::acos, out);
+    Bid128InvTrig.acos(hi, lo, mode, flags, out);
   }
 
   public static void atan(long hi, long lo, RoundingMode mode, StatusFlags flags, long[] out) {
-    BidTranscendental.unary128(hi, lo, mode, flags, Math::atan, out);
+    if (Bid128Libm.tinyOddFma(hi, lo, mode, flags, out)) {
+      return;
+    }
+    BidTranscendental.unary128(hi, lo, mode, flags, Dpml::atan, out);
   }
 
   public static void atan2(
       long yh, long yl, long xh, long xl,
       RoundingMode mode, StatusFlags flags, long[] out) {
-    BidTranscendental.binary128(
-        yh, yl, xh, xl, mode, flags, Math::atan2, out);
+    Bid128Atan2.atan2(yh, yl, xh, xl, mode, flags, out);
   }
 
   public static void sinh(long hi, long lo, RoundingMode mode, StatusFlags flags, long[] out) {
-    BidTranscendental.unary128(hi, lo, mode, flags, Math::sinh, out);
+    if (Bid128Libm.tinyOddFma(hi, lo, mode, flags, out)) {
+      return;
+    }
+    Bid128 x = Bid128.fromRawBits(hi, lo);
+    Bid128 abs = Bid128.fromRawBits(hi & ~Bid128.MASK_SIGN, lo);
+    if (abs.quietGreater(Bid128Libm.ONE, new StatusFlags())) {
+      long[] exp = new long[2];
+      long[] inv = new long[2];
+      Bid128Exp.exp(hi & ~Bid128.MASK_SIGN, lo, mode, flags, exp);
+      Bid128Raw.div(
+          Bid128Libm.ONE.highBits(), Bid128Libm.ONE.lowBits(),
+          exp[0], exp[1], mode, flags, inv);
+      Bid128Raw.sub(exp[0], exp[1], inv[0], inv[1], mode, flags, out);
+      Bid128 half = Bid128.fromRawBits(0x303e_0000_0000_0000L, 5L);
+      Bid128Raw.mul(out[0], out[1], half.highBits(), half.lowBits(), mode, flags, out);
+      if (x.isSigned()) {
+        out[0] ^= Bid128.MASK_SIGN;
+      }
+      return;
+    }
+    BidTranscendental.unary128(hi, lo, mode, flags, Dpml::sinh, out);
   }
 
   public static void cosh(long hi, long lo, RoundingMode mode, StatusFlags flags, long[] out) {
-    BidTranscendental.unary128(hi, lo, mode, flags, Math::cosh, out);
+    Bid128 abs = Bid128.fromRawBits(hi & ~Bid128.MASK_SIGN, lo);
+    if (abs.quietGreater(Bid128Libm.ONE, new StatusFlags())) {
+      long[] exp = new long[2];
+      long[] inv = new long[2];
+      Bid128Exp.exp(hi & ~Bid128.MASK_SIGN, lo, mode, flags, exp);
+      Bid128Raw.div(
+          Bid128Libm.ONE.highBits(), Bid128Libm.ONE.lowBits(),
+          exp[0], exp[1], mode, flags, inv);
+      Bid128Raw.add(exp[0], exp[1], inv[0], inv[1], mode, flags, out);
+      Bid128 half = Bid128.fromRawBits(0x303e_0000_0000_0000L, 5L);
+      Bid128Raw.mul(out[0], out[1], half.highBits(), half.lowBits(), mode, flags, out);
+      return;
+    }
+    BidTranscendental.unary128(hi, lo, mode, flags, Dpml::cosh, out);
   }
 
   public static void tanh(long hi, long lo, RoundingMode mode, StatusFlags flags, long[] out) {
-    BidTranscendental.unary128(hi, lo, mode, flags, Math::tanh, out);
+    if (Bid128Libm.tinyOddFma(hi, lo, mode, flags, out)) {
+      return;
+    }
+    BidTranscendental.unary128(hi, lo, mode, flags, Dpml::tanh, out);
   }
 
   public static void asinh(long hi, long lo, RoundingMode mode, StatusFlags flags, long[] out) {
-    BidTranscendental.unary128(hi, lo, mode, flags, BidTranscendental::asinh, out);
+    Bid128Asinh.asinh(hi, lo, mode, flags, out);
   }
 
   public static void acosh(long hi, long lo, RoundingMode mode, StatusFlags flags, long[] out) {
-    BidTranscendental.unary128(hi, lo, mode, flags, BidTranscendental::acosh, out);
+    Bid128Acosh.acosh(hi, lo, mode, flags, out);
   }
 
   public static void atanh(long hi, long lo, RoundingMode mode, StatusFlags flags, long[] out) {
-    BidTranscendental.unary128(hi, lo, mode, flags, BidTranscendental::atanh, out);
+    Bid128InvTrig.atanh(hi, lo, mode, flags, out);
   }
 
   public static void erf(long hi, long lo, RoundingMode mode, StatusFlags flags, long[] out) {
-    BidTranscendental.unary128(hi, lo, mode, flags, BidTranscendental::erf, out);
+    Bid128Erf.erf(hi, lo, mode, flags, out);
   }
 
   public static void erfc(long hi, long lo, RoundingMode mode, StatusFlags flags, long[] out) {
-    BidTranscendental.unary128(
-        hi, lo, mode, flags, value -> 1.0 - BidTranscendental.erf(value), out);
+    Bid128Erf.erfc(hi, lo, mode, flags, out);
   }
 
   public static void tgamma(long hi, long lo, RoundingMode mode, StatusFlags flags, long[] out) {
-    BidTranscendental.unary128(hi, lo, mode, flags, BidTranscendental::tgamma, out);
+    Bid128Tgamma.tgamma(hi, lo, mode, flags, out);
   }
 
   public static void lgamma(long hi, long lo, RoundingMode mode, StatusFlags flags, long[] out) {
-    BidTranscendental.unary128(hi, lo, mode, flags, BidTranscendental::lgamma, out);
+    Bid128Lgamma.lgamma(hi, lo, mode, flags, out);
   }
 
   public static void hypot(
       long xh, long xl, long yh, long yl, RoundingMode mode, StatusFlags flags, long[] out) {
-    BidTranscendental.binary128(xh, xl, yh, yl, mode, flags, Math::hypot, out);
+    BidTranscendental.hypot128(xh, xl, yh, yl, mode, flags, out);
   }
 
   public static void cbrt(long hi, long lo, RoundingMode mode, StatusFlags flags, long[] out) {
-    BidTranscendental.unary128(hi, lo, mode, flags, Math::cbrt, out);
+    Bid128Cbrt.cbrt(hi, lo, mode, flags, out);
   }
 
   private static void store(long hi, long lo, long[] out) {

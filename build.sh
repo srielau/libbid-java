@@ -40,6 +40,8 @@ for test_class in \
     Bid128DivideTest \
     UInt128Test \
     BidRawApiTest \
+    BidBinary128VectorTest \
+    BidTranscendentalVectorTest \
     BidComparisonVectorTest \
     BidRoundingVectorTest \
     BidScaleVectorTest \

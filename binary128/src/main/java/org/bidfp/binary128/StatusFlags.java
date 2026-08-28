@@ -31,6 +31,10 @@ public final class StatusFlags {
     bits |= flags;
   }
 
+  public void raise(StatusFlags other) {
+    bits |= other.bits;
+  }
+
   public void clear() {
     bits = 0;
   }

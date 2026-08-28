@@ -7,6 +7,8 @@
  */
 package org.bidfp;
 
+import org.bidfp.binary128.Binary128;
+
 /** IEEE 754 decimal128 value in Binary Integer Decimal (BID) encoding. */
 public final class Bid128 {
   private static final int UNORDERED = 2;
@@ -188,6 +190,19 @@ public final class Bid128 {
 
   public float toFloat(RoundingMode mode, StatusFlags flags) {
     return Bid128Raw.toBinary32(high, low, mode, flags);
+  }
+
+  public Binary128 toBinary128(RoundingMode mode, StatusFlags flags) {
+    long[] bits128 = new long[2];
+    Bid128Raw.toBinary128(high, low, mode, flags, bits128);
+    return Binary128.fromRawBits(bits128[0], bits128[1]);
+  }
+
+  public static Bid128 fromBinary128(
+      Binary128 value, RoundingMode mode, StatusFlags flags) {
+    long[] result = new long[2];
+    Bid128Raw.fromBinary128(value.highBits(), value.lowBits(), mode, flags, result);
+    return fromRawBits(result[0], result[1]);
   }
 
   public Bid64 toBid64(RoundingMode mode, StatusFlags flags) {

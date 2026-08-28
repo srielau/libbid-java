@@ -56,6 +56,10 @@ final class DecNum {
     negative = true;
   }
 
+  void setNegative(boolean value) {
+    negative = value;
+  }
+
   void shiftExp(int delta) {
     exp += delta;
   }
@@ -447,6 +451,13 @@ final class DecNum {
       value = value.multiply(BASE).add(limbs[i]);
     }
     return value;
+  }
+
+  java.math.BigInteger toBigIntegerAbsolute() {
+    if (isZero()) {
+      return java.math.BigInteger.ZERO;
+    }
+    return new java.math.BigInteger(toDigits());
   }
 
   String toDigits() {

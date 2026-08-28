@@ -399,6 +399,26 @@ final class BidConvert {
     return toBinary32(number, mode, flags);
   }
 
+  static void toBinary128From64(
+      long x, RoundingMode mode, StatusFlags flags, long[] out) {
+    BidBinary128Convert.toBinary128From64(x, mode, flags, out);
+  }
+
+  static void toBinary128From128(
+      long high, long low, RoundingMode mode, StatusFlags flags, long[] out) {
+    BidBinary128Convert.toBinary128From128(high, low, mode, flags, out);
+  }
+
+  static long fromBinary128To64(
+      long high, long low, RoundingMode mode, StatusFlags flags) {
+    return BidBinary128Convert.fromBinary128To64(high, low, mode, flags);
+  }
+
+  static void fromBinary128To128(
+      long high, long low, RoundingMode mode, StatusFlags flags, long[] out) {
+    BidBinary128Convert.fromBinary128To128(high, low, mode, flags, out);
+  }
+
   static void bid64ToBid128(long x, long[] payloadOut, StatusFlags flags) {
     if (Bid64Raw.isNaN(x)) {
       if (Bid64Raw.isSignalingNaN(x)) {
@@ -473,19 +493,7 @@ final class BidConvert {
       mantissa = fraction | (1L << 52);
       exp2 = binaryExp - 1075;
     }
-    DecNum number = DecNum.ofUnsigned(0L, mantissa);
-    if (negative) {
-      number = applySign(number, true);
-    }
-    if (exp2 >= 0) {
-      number.multiplyPow2(exp2);
-    } else {
-      int n = -exp2;
-      number.multiplyPow5(n);
-      number = scaleExp(number, -n);
-    }
-    number.stripTrailingZeros(0);
-    return number;
+    return BidBinary128Convert.fromBinary(new UInt128(0L, mantissa), exp2, negative);
   }
 
   private static double toBinary(

@@ -18,7 +18,6 @@ final class DpmlExpHyperKernel {
   private static final int EXP10_DEGREE_OFFSET = 568;
   private static final int EXP10_COEFS_OFFSET = 576;
   private static final int EXP_LIMIT = 18;
-  private static final int EXP2_TINY_EXPONENT = -114;
   private static final int FORCED_OVERFLOW_EXPONENT = 131071;
   private static final int FORCED_UNDERFLOW_EXPONENT = -131072;
 
@@ -79,6 +78,14 @@ final class DpmlExpHyperKernel {
     return new Reduction(argument.sign != 0 ? -scale : scale, reduced);
   }
 
+  /** Unpacked {@code exp}; used by tgamma so lgamma is packed only once. */
+  static Unpacked exp(Unpacked x, StatusFlags status) {
+    Reduction reduction = reduce(x, false, status);
+    Unpacked result = expPolynomial(reduction.argument, false, status);
+    result.exponent += (int) reduction.scale;
+    return result;
+  }
+
   static Unpacked expPolynomial(Unpacked reduced, boolean base10, StatusFlags status) {
     int degreeOffset = base10 ? EXP10_DEGREE_OFFSET : EXP_DEGREE_OFFSET;
     int coefsOffset = base10 ? EXP10_COEFS_OFFSET : EXP_COEFS_OFFSET;
@@ -122,10 +129,6 @@ final class DpmlExpHyperKernel {
           ? FORCED_UNDERFLOW_EXPONENT : FORCED_OVERFLOW_EXPONENT;
       return forced;
     }
-    if (exponent < EXP2_TINY_EXPONENT) {
-      return UxTable.readUxFloat(PowX.TABLE, PowX.UX_ONE);
-    }
-
     long scale = 0;
     Unpacked reduced = x.copy();
     if (exponent >= 0) {

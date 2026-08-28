@@ -9,13 +9,14 @@
 package org.bidfp.binary128;
 
 import org.bidfp.binary128.tables.LgammaX;
+import org.bidfp.binary128.tables.LogX;
 
 /**
  * Intel QUAD UX {@code lgamma} and {@code tgamma}.
  *
  * <p>The reduced interval and asymptotic corrections use the rational
- * approximations from {@code dpml_lgamma_x.h}. Transcendental suboperations
- * deliberately go through the public DPML log, exp, and trig kernels.
+ * approximations from {@code dpml_lgamma_x.h}. {@code tgamma} keeps the
+ * lgamma result unpacked and applies {@code exp} before a single pack.
  */
 public final class DpmlGamma {
   private static final long[] TABLE = LgammaX.TABLE;
@@ -50,17 +51,16 @@ public final class DpmlGamma {
       return overflow(mode, false, st);
     }
 
-    Binary128 lg = lgamma(x, RoundingMode.TIES_TO_EVEN, new StatusFlags());
-    Unpacked lu = UxOps.unpack(lg);
-    if (lu.isInfinite()) {
+    StatusFlags local = new StatusFlags();
+    Unpacked lu = a.exponent < 5 ? reduced(a.copy(), local) : asymptotic(a.copy(), local);
+    if (lu.isInfinite() || (lu.klass == Unpacked.CLASS_NORM && lu.exponent >= 14)) {
       return overflow(mode, gammaSignNegative(a), st);
     }
-    if (lu.klass == Unpacked.CLASS_NORM && lu.exponent >= 14) {
-      return overflow(mode, gammaSignNegative(a), st);
+    Unpacked magnitude = DpmlExpHyperKernel.exp(lu, local);
+    if (gammaSignNegative(a)) {
+      UxOps.negate(magnitude);
     }
-
-    Binary128 magnitude = DpmlExp.exp(lg, mode, st);
-    return gammaSignNegative(a) ? magnitude.negate() : magnitude;
+    return UxOps.pack(magnitude, mode, st);
   }
 
   public static Binary128 lgamma(Binary128 x, RoundingMode mode, StatusFlags st) {
@@ -137,7 +137,7 @@ public final class DpmlGamma {
 
     product.sign = 0;
     if (compare(product, one) != 0) {
-      Unpacked lp = log(product);
+      Unpacked lp = log(product, st);
       if (compare(original, one) < 0) {
         KernelEval.sub(result, lp, tmp, st);
       } else {
@@ -151,7 +151,7 @@ public final class DpmlGamma {
   private static Unpacked asymptotic(Unpacked signedX, StatusFlags st) {
     boolean negative = signedX.sign != 0;
     signedX.sign = 0;
-    Unpacked logX = log(signedX);
+    Unpacked logX = log(signedX, st);
     Unpacked half = ux(LgammaX.UX_HALF);
     Unpacked factor = new Unpacked();
     if (negative) {
@@ -198,18 +198,18 @@ public final class DpmlGamma {
           new StatusFlags());
       Unpacked absSine = UxOps.unpack(sine);
       absSine.sign = 0;
-      Unpacked logSine = log(absSine);
+      Unpacked logSine = log(absSine, st);
       KernelEval.sub(result, logSine, tmp, st);
       result.copyFrom(tmp);
     }
     return result;
   }
 
-  private static Unpacked log(Unpacked value) {
+  private static Unpacked log(Unpacked value, StatusFlags st) {
     value.sign = 0;
-    Binary128 packed = UxOps.pack(value, RoundingMode.TIES_TO_EVEN, new StatusFlags());
-    return UxOps.unpack(DpmlLog.log(
-        packed, RoundingMode.TIES_TO_EVEN, new StatusFlags()));
+    UxOps.normalize(value);
+    return DpmlLogInvHyperKernel.log(
+        value, UxTable.readUxFloat(LogX.TABLE, LogX.LN_2), st);
   }
 
   private static Unpacked ux(int offset) {

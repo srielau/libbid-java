@@ -47,6 +47,7 @@ public final class DpmlErf {
           : Binary128.ZERO;
     }
     if (complement && x.isSubnormal()) {
+      status.raise(StatusFlags.DENORMAL);
       return Binary128.ONE;
     }
 

@@ -77,6 +77,16 @@ class LibraryTests {
   }
 
   @Test
+  void bidBinary128Convert() throws IOException {
+    BidBinary128VectorTest.main(new String[0]);
+  }
+
+  @Test
+  void bidTranscendentals() throws Exception {
+    BidTranscendentalVectorTest.main(new String[0]);
+  }
+
+  @Test
   void bidComparisons() throws IOException {
     BidComparisonVectorTest.main(new String[0]);
   }

@@ -7,90 +7,123 @@
  */
 package org.bidfp;
 
-import java.util.function.DoubleBinaryOperator;
-import java.util.function.DoubleUnaryOperator;
+import org.bidfp.binary128.Binary128;
+import org.bidfp.binary128.Dpml;
 
 /**
- * Transcendental BID64/BID128 operations via binary64 evaluation.
- *
- * <p>Provisional. Intel-identical results need the {@code binary128} module
- * DPML kernels plus BID convert in {@link BidConvert}. Do not grow this
- * {@code double} path; replace it when DPML lands.
+ * BID64/BID128 transcendentals: convert to binary128, DPML kernel, convert
+ * back. {@code hypot} is sqrt(x^2+y^2) plus Intel NaN/Inf/0 and BID128
+ * exponent rebias (Intel uses host hypot, not a DPML table).
  */
 final class BidTranscendental {
   private BidTranscendental() {
   }
 
-  static long unary64(long x, RoundingMode mode, StatusFlags flags, DoubleUnaryOperator op) {
-    double in = BidConvert.toBinary64From64(x, RoundingMode.TIES_TO_EVEN, new StatusFlags());
-    double out = op.applyAsDouble(in);
-    return BidConvert.fromBinary64To64(out, mode, flags);
+  @FunctionalInterface
+  interface Unary {
+    Binary128 apply(
+        Binary128 x,
+        org.bidfp.binary128.RoundingMode mode,
+        org.bidfp.binary128.StatusFlags status);
   }
 
-  static long binary64(
-      long x, long y, RoundingMode mode, StatusFlags flags, DoubleBinaryOperator op) {
-    double a = BidConvert.toBinary64From64(x, RoundingMode.TIES_TO_EVEN, new StatusFlags());
-    double b = BidConvert.toBinary64From64(y, RoundingMode.TIES_TO_EVEN, new StatusFlags());
-    return BidConvert.fromBinary64To64(op.applyAsDouble(a, b), mode, flags);
+  @FunctionalInterface
+  interface Binary {
+    Binary128 apply(
+        Binary128 x,
+        Binary128 y,
+        org.bidfp.binary128.RoundingMode mode,
+        org.bidfp.binary128.StatusFlags status);
+  }
+
+  static long unary64(long x, RoundingMode mode, StatusFlags flags, Unary op) {
+    long[] packed = new long[2];
+    BidConvert.toBinary128From64(x, mode, flags, packed);
+    Binary128 result = apply(packed, mode, flags, op);
+    return BidConvert.fromBinary128To64(
+        result.highBits(), result.lowBits(), mode, flags);
   }
 
   static void unary128(
-      long high, long low, RoundingMode mode, StatusFlags flags, DoubleUnaryOperator op,
+      long high, long low, RoundingMode mode, StatusFlags flags, Unary op,
       long[] out) {
-    double in = BidConvert.toBinary64From128(
-        high, low, RoundingMode.TIES_TO_EVEN, new StatusFlags());
-    BidConvert.fromBinary64To128(op.applyAsDouble(in), mode, flags, out);
+    long[] packed = new long[2];
+    BidConvert.toBinary128From128(high, low, mode, flags, packed);
+    Binary128 result = apply(packed, mode, flags, op);
+    BidConvert.fromBinary128To128(
+        result.highBits(), result.lowBits(), mode, flags, out);
+  }
+
+  static long binary64(
+      long x, long y, RoundingMode mode, StatusFlags flags, Binary op) {
+    long[] a = new long[2];
+    long[] b = new long[2];
+    BidConvert.toBinary128From64(x, mode, flags, a);
+    BidConvert.toBinary128From64(y, mode, flags, b);
+    Binary128 result = apply(a, b, mode, flags, op);
+    return BidConvert.fromBinary128To64(
+        result.highBits(), result.lowBits(), mode, flags);
   }
 
   static void binary128(
       long xh, long xl, long yh, long yl,
-      RoundingMode mode, StatusFlags flags, DoubleBinaryOperator op, long[] out) {
-    double a = BidConvert.toBinary64From128(
-        xh, xl, RoundingMode.TIES_TO_EVEN, new StatusFlags());
-    double b = BidConvert.toBinary64From128(
-        yh, yl, RoundingMode.TIES_TO_EVEN, new StatusFlags());
-    BidConvert.fromBinary64To128(op.applyAsDouble(a, b), mode, flags, out);
+      RoundingMode mode, StatusFlags flags, Binary op, long[] out) {
+    long[] a = new long[2];
+    long[] b = new long[2];
+    BidConvert.toBinary128From128(xh, xl, mode, flags, a);
+    BidConvert.toBinary128From128(yh, yl, mode, flags, b);
+    Binary128 result = apply(a, b, mode, flags, op);
+    BidConvert.fromBinary128To128(
+        result.highBits(), result.lowBits(), mode, flags, out);
   }
 
-  static long cbrt64(long x, RoundingMode mode, StatusFlags flags) {
-    return unary64(x, mode, flags, Math::cbrt);
+  static long hypot64(long x, long y, RoundingMode mode, StatusFlags flags) {
+    return BidHypot.hypot64(x, y, mode, flags);
   }
 
-  static double asinh(double x) {
-    return Math.log(x + Math.sqrt(x * x + 1.0));
+  static void hypot128(
+      long xh, long xl, long yh, long yl,
+      RoundingMode mode, StatusFlags flags, long[] out) {
+    BidHypot.hypot128(xh, xl, yh, yl, mode, flags, out);
   }
 
-  static double acosh(double x) {
-    return Math.log(x + Math.sqrt(x * x - 1.0));
+  static Binary128 hypotKernel(
+      Binary128 x, Binary128 y,
+      org.bidfp.binary128.RoundingMode mode,
+      org.bidfp.binary128.StatusFlags status) {
+    org.bidfp.binary128.StatusFlags local = new org.bidfp.binary128.StatusFlags();
+    Binary128 x2 = Dpml.mul(x, x, mode, local);
+    Binary128 y2 = Dpml.mul(y, y, mode, local);
+    Binary128 sum = Dpml.add(x2, y2, mode, local);
+    Binary128 root = Dpml.sqrt(sum, mode, status);
+    status.raise(local.bits());
+    return root;
   }
 
-  static double atanh(double x) {
-    return 0.5 * Math.log((1.0 + x) / (1.0 - x));
+  private static Binary128 apply(
+      long[] packed, RoundingMode mode, StatusFlags flags, Unary op) {
+    org.bidfp.binary128.RoundingMode binaryMode = binaryMode(mode);
+    org.bidfp.binary128.StatusFlags local = new org.bidfp.binary128.StatusFlags();
+    Binary128 result = op.apply(
+        Binary128.fromRawBits(packed[0], packed[1]), binaryMode, local);
+    flags.raise(local.bits());
+    return result;
   }
 
-  static double erf(double x) {
-    double t = 1.0 / (1.0 + 0.3275911 * Math.abs(x));
-    double y = 1.0 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741)
-        * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
-    return x < 0 ? -y : y;
+  private static Binary128 apply(
+      long[] a, long[] b, RoundingMode mode, StatusFlags flags, Binary op) {
+    org.bidfp.binary128.RoundingMode binaryMode = binaryMode(mode);
+    org.bidfp.binary128.StatusFlags local = new org.bidfp.binary128.StatusFlags();
+    Binary128 result = op.apply(
+        Binary128.fromRawBits(a[0], a[1]),
+        Binary128.fromRawBits(b[0], b[1]),
+        binaryMode,
+        local);
+    flags.raise(local.bits());
+    return result;
   }
 
-  static double tgamma(double x) {
-    return Math.exp(lgamma(x));
-  }
-
-  static double lgamma(double x) {
-    double[] c = {
-      76.18009172947146, -86.50532032941677, 24.01409824083091,
-      -1.231739572450155, 0.001208650973866179, -0.000005395239384953
-    };
-    double y = x;
-    double tmp = x + 5.5;
-    tmp -= (x + 0.5) * Math.log(tmp);
-    double ser = 1.000000000190015;
-    for (int j = 0; j < 6; j++) {
-      ser += c[j] / ++y;
-    }
-    return -tmp + Math.log(2.5066282746310005 * ser / x);
+  static org.bidfp.binary128.RoundingMode binaryMode(RoundingMode mode) {
+    return org.bidfp.binary128.RoundingMode.fromIntel(mode.toIntel());
   }
 }

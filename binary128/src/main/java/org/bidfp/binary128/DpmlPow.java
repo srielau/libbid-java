@@ -79,10 +79,8 @@ public final class DpmlPow {
       return negativeResult ? Binary128.ONE.negate() : Binary128.ONE;
     }
     if (isHalf(y)) {
-      Binary128 root = UxOps.sqrt(x, mode, new StatusFlags());
-      return y.isSigned()
-          ? UxOps.div(Binary128.ONE, root, mode, st)
-          : root;
+      Binary128 root = UxOps.sqrt(x, mode, st);
+      return y.isSigned() ? UxOps.div(Binary128.ONE, root, mode, st) : root;
     }
 
     StatusFlags local = new StatusFlags();
@@ -150,10 +148,6 @@ public final class DpmlPow {
       result.exponent = x.sign != 0 ? -131072 : 131071;
       return result;
     }
-    if (x.exponent < -114) {
-      return UxTable.readUxFloat(PowX.TABLE, PowX.UX_ONE);
-    }
-
     int integer = DpmlPowCbrtSupport.nearestInt(x);
     Unpacked reduced;
     if (integer == 0) {

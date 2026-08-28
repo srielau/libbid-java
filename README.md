@@ -18,11 +18,17 @@ and tests are Apache License 2.0. Keep `LICENSE`, `LICENSE-INTEL`, and
 - Quiet/signaling comparisons, `totalOrder`, `sameQuantum`
 - Add, subtract, multiply, divide, FMA, remainder, sqrt, quantize, scale
 - Round-to-integral, nextUp/nextDown, minnum/maxnum
-- String, integer, binary32/64, and BID64<->BID128 conversion
+- String, integer, binary32/64, BID64<->BID128, and BID<->binary128 conversion
 - DPD encode/decode (BID64 and BID128)
 - Intel `readtest.in` coverage for the core BID64/BID128 operation families above
-- Provisional transcendentals via binary64 evaluation; these do not meet Intel
-  DPML precision or flag semantics and are not part of the conformant core
+  plus exact-bit BID<->binary128 convert (6664 vectors)
+- Transcendentals: convert to binary128, DPML kernel, convert back, plus Intel
+  wrapper specials (exp clamps, near-1 log, Payne-Hanek trig, hypot, domain).
+  `BidTranscendentalVectorTest` runs 5448 Intel libm vectors (ULP + INVALID/DIVBYZERO).
+  Remaining known ULP/encoding misses vs Intel `readtest.in`:
+  bid64_acosh near 1 (~1 ULP), bid64_erf(max) directed encoding of 1,
+  bid128_erf of huge inputs, bid64_tgamma(MinNorm) overflow encoding,
+  bid128_tgamma/lgamma overflow vs max, bid128_pow (~3 ULP).
 - DBR adapters: Compare/Equals, Sign, RoundToScale, Canonicalize, Decimal
 - Dual API: `Bid64`/`Bid128` objects and `Bid64Raw`/`Bid128Raw`, plus
   `DecFloat16Compat`/`DecFloat34Compat` JNI-shaped methods
@@ -36,8 +42,7 @@ Spark should depend on `libbid-java` (it pulls `binary128`). DPML notes:
 `binary128/AGENTS.md`.
 
 Not in this release: BID32, BID256, binary80, mixed-width arithmetic,
-global rounding/flag modes. BID <-> binary128 convert and Intel-matching
-transcendental wrappers are the remaining gap.
+global rounding/flag modes.
 
 ## Build and test
 
