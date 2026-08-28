@@ -56,7 +56,7 @@ mkdir -p "$RESULT_DIR"
 } > "$RESULT_DIR/environment.txt"
 
 "$JAVA_BIN" -jar "$ROOT/bid/target/benchmarks.jar" \
-  'org\.bidfp\.BidJmhBenchmark\..*' \
+  'org\.bidfp\..*JmhBenchmark\..*' \
   -wi "$WARMUP_ITERATIONS" \
   -w "$WARMUP_TIME" \
   -i "$MEASUREMENT_ITERATIONS" \
