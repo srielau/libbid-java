@@ -632,11 +632,11 @@ public final class Bid64Raw {
   }
 
   public static long erf(long x, RoundingMode mode, StatusFlags flags) {
-    return BidTranscendental.unary64(x, mode, flags, Dpml::erf);
+    return Bid64Erf.erf(x, mode, flags);
   }
 
   public static long erfc(long x, RoundingMode mode, StatusFlags flags) {
-    return BidTranscendental.unary64(x, mode, flags, Dpml::erfc);
+    return Bid64Erf.erfc(x, mode, flags);
   }
 
   public static long tgamma(long x, RoundingMode mode, StatusFlags flags) {

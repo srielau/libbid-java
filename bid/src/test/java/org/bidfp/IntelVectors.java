@@ -115,4 +115,18 @@ final class IntelVectors {
     }
     return withoutUlp.trim().split("\\s+");
   }
+
+  static double ulp(String line) {
+    String lower = line.toLowerCase(Locale.ROOT);
+    int start = lower.indexOf(" ulp=");
+    if (start < 0) {
+      return 0.0;
+    }
+    start += 5;
+    int end = start;
+    while (end < line.length() && !Character.isWhitespace(line.charAt(end))) {
+      end++;
+    }
+    return Double.parseDouble(line.substring(start, end));
+  }
 }

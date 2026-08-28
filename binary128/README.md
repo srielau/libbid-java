@@ -68,7 +68,8 @@ ns/op (22.3%). Every measured operation improved; individual gains ranged from
 1.4% for `asinh` to 43.2% for `expm1` and `sinh`. Results are machine-specific
 and should only be compared with identical JVM and JMH settings.
 
-## Follow-up outside this artifact
+## BID integration
 
-- Decimal Payne-Hanek moduli (BID wrappers, not this JAR).
-- `bid/` convert + `BidTranscendental` rewire (see `AGENTS.md` close-the-gap).
+The sibling `libbid-java` artifact depends on this JAR and owns all decimal
+concerns: exact BID conversion, decimal Payne-Hanek moduli, wrapper specials,
+and the convert-kernel-convert seam. This artifact has no dependency on BID.

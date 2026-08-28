@@ -32,6 +32,8 @@ final class Bid128Exp {
       Binary128.fromRawBits(0x400c_57c0_0000_0000L, 0L);
   private static final Binary128 F128_NEG_11000 =
       Binary128.fromRawBits(0xc00c_57c0_0000_0000L, 0L);
+  private static final Binary128 F128_ZERO =
+      Binary128.fromRawBits(0L, 0L);
 
   private Bid128Exp() {
   }
@@ -106,6 +108,29 @@ final class Bid128Exp {
       flags.raise(local.bits());
       BidConvert.fromBinary128To128(
           exp.highBits(), exp.lowBits(), mode, flags, out);
+    }
+  }
+
+  static void expBinary(
+      Binary128 value, RoundingMode mode, StatusFlags flags, long[] out) {
+    org.bidfp.binary128.RoundingMode binaryMode = BidTranscendental.binaryMode(mode);
+    org.bidfp.binary128.StatusFlags local = new org.bidfp.binary128.StatusFlags();
+    Binary128 reduced = value;
+    Bid128 scale = null;
+    if (greater(value, F128_11000, binaryMode, local)) {
+      reduced = Dpml.sub(value, F128_11000, binaryMode, local);
+      scale = EXP_11000;
+    } else if (less(value, F128_NEG_11000, binaryMode, local)) {
+      reduced = Dpml.add(value, F128_11000, binaryMode, local);
+      scale = EXP_M11000;
+    }
+    Binary128 exp = combineExp(reduced, F128_ZERO, binaryMode, local);
+    flags.raise(local.bits());
+    BidConvert.fromBinary128To128(
+        exp.highBits(), exp.lowBits(), mode, flags, out);
+    if (scale != null) {
+      Bid128Raw.mul(
+          out[0], out[1], scale.highBits(), scale.lowBits(), mode, flags, out);
     }
   }
 

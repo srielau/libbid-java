@@ -133,25 +133,24 @@ the later `bid/` close-the-gap step.
 - Short note in this file or `binary128/README.md`: what landed, what
   is stubbed.
 
-## Close-the-gap (NOT this agent)
+## BID integration (landed in the sibling module)
 
-A later change in `bid/`:
+The `bid/` module now:
 
-1. `BidConvert`: `toBinary128` / `fromBinary128` vs `readtest.in`.
-2. Replace `BidTranscendental` `double` path with convert-kernel-convert.
-3. Port specials from `src/bid64_exp.c` (NaN quiet, `exp(0)=1`, overflow
+1. Implements `BidConvert` BID/binary128 conversion against `readtest.in`.
+2. Uses convert-kernel-convert in `BidTranscendental`.
+3. Owns specials from `src/bid64_exp.c` (NaN quiet, `exp(0)=1`, overflow
    clamps, near-1 log/pow coefficient fixes).
-4. Port decimal trig moduli for `sin`/`cos`/`tan`.
-5. Turn on Intel vector tests for the 28 functions.
-
-Until then, leave `BidTranscendental` as the provisional binary64 stub.
+4. Owns decimal trig moduli for `sin`/`cos`/`tan`.
+5. Runs the Intel vector tests for all enabled libm functions.
 
 ## Landed (this port)
 
 Packed `Binary128` layout, `Unpacked`/`UxOps` (normalize, unpack, five-mode
 pack, add/sub/mul/div/sqrt/compare), and `Dpml*` kernel families via
 unpacked arithmetic. Intel `*_t_table.c` blobs are not vendored; see
-`README.md`. BID convert remains out of scope.
+`README.md`. BID conversion remains outside this artifact and is implemented
+by the sibling `bid/` module.
 
 ## Practical notes
 
@@ -160,5 +159,5 @@ unpacked arithmetic. Intel `*_t_table.c` blobs are not vendored; see
   `DecNum` / `UInt128` like the existing binary64 convert.
 - Wrapper C files (`bid64_exp.c` ~97 lines) are thin; copy their
   special-case rules when rewiring BID, not when writing DPML.
-- Spark DECFLOAT does not need this JAR until the gap is closed; still
-  ship `binary128` as its own artifact from this parent POM.
+- Ship `binary128` as its own artifact. Consumers normally depend on
+  `libbid-java`, which pulls this JAR transitively.

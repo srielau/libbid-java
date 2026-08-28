@@ -24,11 +24,8 @@ and tests are Apache License 2.0. Keep `LICENSE`, `LICENSE-INTEL`, and
   plus exact-bit BID<->binary128 convert (6664 vectors)
 - Transcendentals: convert to binary128, DPML kernel, convert back, plus Intel
   wrapper specials (exp clamps, near-1 log, Payne-Hanek trig, hypot, domain).
-  `BidTranscendentalVectorTest` runs 5448 Intel libm vectors (ULP + INVALID/DIVBYZERO).
-  Remaining known ULP/encoding misses vs Intel `readtest.in`:
-  bid64_acosh near 1 (~1 ULP), bid64_erf(max) directed encoding of 1,
-  bid128_erf of huge inputs, bid64_tgamma(MinNorm) overflow encoding,
-  bid128_tgamma/lgamma overflow vs max, bid128_pow (~3 ULP).
+  `BidTranscendentalVectorTest` passes all 5448 Intel libm vectors using
+  Intel's per-vector ULP offsets and INVALID/DIVBYZERO flag rules.
 - DBR adapters: Compare/Equals, Sign, RoundToScale, Canonicalize, Decimal
 - Dual API: `Bid64`/`Bid128` objects and `Bid64Raw`/`Bid128Raw`, plus
   `DecFloat16Compat`/`DecFloat34Compat` JNI-shaped methods

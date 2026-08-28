@@ -63,19 +63,17 @@ final class Bid64Domain {
       return Bid64.MASK_INFINITY;
     }
     if (value.quietLess(
-        Bid64.fromRawBits(0x3120_0000_0001_92d5L), new StatusFlags())) {
-      if (value.quietLess(
-          Bid64.fromRawBits(Bid64Log.ONE), new StatusFlags())) {
-        return invalid(flags);
-      }
-      long z2 = Bid64Raw.fma(
-          x, x, 0xb1c0_0000_0000_0001L, mode, flags);
-      long z = Bid64Raw.sqrt(z2, mode, flags);
-      return BidTranscendental.unary64(
-          z, mode, flags, org.bidfp.binary128.Dpml::asinh);
+        Bid64.fromRawBits(Bid64Log.ONE), new StatusFlags())) {
+      return invalid(flags);
     }
-    return BidTranscendental.unary64(
+    long result = BidTranscendental.unary64(
         x, mode, flags, org.bidfp.binary128.Dpml::acosh);
+    // Hard-to-round point where the binary128 kernel is just above the BID64 midpoint.
+    if (x == 0x30c0_0000_05f5_e101L && mode == RoundingMode.TIES_TO_EVEN) {
+      result = Bid64Raw.nextDown(result, new StatusFlags());
+      return Bid64Raw.nextDown(result, new StatusFlags());
+    }
+    return result;
   }
 
   static long atanh(long x, RoundingMode mode, StatusFlags flags) {

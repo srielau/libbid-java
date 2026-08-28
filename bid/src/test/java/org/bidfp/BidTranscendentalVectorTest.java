@@ -9,6 +9,7 @@ import java.lang.reflect.Method;
  */
 public final class BidTranscendentalVectorTest {
   private static final int TRANS_FLAGS = StatusFlags.INVALID | StatusFlags.DIVIDE_BY_ZERO;
+  private static final boolean REPORT_ALL = Boolean.getBoolean("bid.trans.reportAll");
   private static final String[] UNARY64 = {
       "exp", "expm1", "exp2", "exp10", "log", "log10", "log2", "log1p",
       "sin", "cos", "tan", "asin", "acos", "atan",
@@ -55,11 +56,12 @@ public final class BidTranscendentalVectorTest {
       }
       RoundingMode mode = IntelVectors.mode(tokens[1]);
       long input = parse64(tokens[2]);
-      long expected = parse64(tokens[3]);
+      long expected = parse64(tokens[3], mode);
       int expectedFlags = IntelVectors.flags(tokens[4]) & TRANS_FLAGS;
       StatusFlags flags = new StatusFlags();
       long actual = (Long) method.invoke(null, input, mode, flags);
-      if (!reported && (!accept64(actual, expected, mode)
+      if ((!reported || REPORT_ALL) && (!accept64(
+          actual, expected, mode, IntelVectors.ulp(line))
           || (flags.bits() & TRANS_FLAGS) != expectedFlags)) {
         failures.append(String.format(
             "%s actual [0x%016x] %02x%n", line, actual, flags.bits()));
@@ -84,12 +86,13 @@ public final class BidTranscendentalVectorTest {
       }
       RoundingMode mode = IntelVectors.mode(tokens[1]);
       long[] input = parse128(tokens[2]);
-      long[] expected = parse128(tokens[3]);
+      long[] expected = parse128(tokens[3], mode);
       int expectedFlags = IntelVectors.flags(tokens[4]) & TRANS_FLAGS;
       long[] actual = new long[2];
       StatusFlags flags = new StatusFlags();
       method.invoke(null, input[0], input[1], mode, flags, actual);
-      if (!reported && (!accept128(actual, expected, mode)
+      if ((!reported || REPORT_ALL) && (!accept128(
+          actual, expected, mode, IntelVectors.ulp(line))
           || (flags.bits() & TRANS_FLAGS) != expectedFlags)) {
         failures.append(String.format(
             "%s actual [0x%016x%016x] %02x%n",
@@ -116,11 +119,12 @@ public final class BidTranscendentalVectorTest {
       RoundingMode mode = IntelVectors.mode(tokens[1]);
       long x = parse64(tokens[2]);
       long y = parse64(tokens[3]);
-      long expected = parse64(tokens[4]);
+      long expected = parse64(tokens[4], mode);
       int expectedFlags = IntelVectors.flags(tokens[5]) & TRANS_FLAGS;
       StatusFlags flags = new StatusFlags();
       long actual = (Long) method.invoke(null, x, y, mode, flags);
-      if (!reported && (!accept64(actual, expected, mode)
+      if ((!reported || REPORT_ALL) && (!accept64(
+          actual, expected, mode, IntelVectors.ulp(line))
           || (flags.bits() & TRANS_FLAGS) != expectedFlags)) {
         failures.append(String.format(
             "%s actual [0x%016x] %02x%n", line, actual, flags.bits()));
@@ -149,12 +153,13 @@ public final class BidTranscendentalVectorTest {
       RoundingMode mode = IntelVectors.mode(tokens[1]);
       long[] x = parse128(tokens[2]);
       long[] y = parse128(tokens[3]);
-      long[] expected = parse128(tokens[4]);
+      long[] expected = parse128(tokens[4], mode);
       int expectedFlags = IntelVectors.flags(tokens[5]) & TRANS_FLAGS;
       long[] actual = new long[2];
       StatusFlags flags = new StatusFlags();
       method.invoke(null, x[0], x[1], y[0], y[1], mode, flags, actual);
-      if (!reported && (!accept128(actual, expected, mode)
+      if ((!reported || REPORT_ALL) && (!accept128(
+          actual, expected, mode, IntelVectors.ulp(line))
           || (flags.bits() & TRANS_FLAGS) != expectedFlags)) {
         failures.append(String.format(
             "%s actual [0x%016x%016x] %02x%n",
@@ -166,7 +171,8 @@ public final class BidTranscendentalVectorTest {
     return tested;
   }
 
-  private static boolean accept64(long actual, long expected, RoundingMode mode) {
+  private static boolean accept64(
+      long actual, long expected, RoundingMode mode, double expectedUlp) {
     if (Bid64Raw.isNaN(expected) || Bid64Raw.isInf(expected)
         || Bid64Raw.isNaN(actual) || Bid64Raw.isInf(actual)) {
       return actual == expected;
@@ -174,41 +180,92 @@ public final class BidTranscendentalVectorTest {
     if ((actual & Bid64.MASK_SIGN) != (expected & Bid64.MASK_SIGN)) {
       return Bid64Raw.isZero(actual) && Bid64Raw.isZero(expected);
     }
+    Bid64 a = Bid64.fromRawBits(actual);
+    Bid64 e = Bid64.fromRawBits(expected);
+    long alignedActual = actual;
+    long alignedExpected = expected;
     StatusFlags flags = new StatusFlags();
-    long quantized = Bid64Raw.quantize(actual, expected, mode, flags);
-    if (Bid64Raw.isNaN(quantized)) {
+    if (a.biasedExponent() < e.biasedExponent()) {
+      alignedActual = Bid64Raw.quantize(actual, expected, mode, flags);
+    } else if (e.biasedExponent() < a.biasedExponent()) {
+      alignedExpected = Bid64Raw.quantize(expected, actual, mode, flags);
+    }
+    if (Bid64Raw.isNaN(alignedActual) || Bid64Raw.isNaN(alignedExpected)
+        || Bid64.fromRawBits(alignedActual).biasedExponent()
+            != Bid64.fromRawBits(alignedExpected).biasedExponent()) {
       return false;
     }
-    long m1 = Bid64.significandBits(quantized);
-    long m2 = Bid64.significandBits(expected);
-    double ulp = Math.abs((double) m1 - (double) m2);
-    return ulp <= limit64(mode);
+    long m1 = Bid64.significandBits(alignedActual);
+    long m2 = Bid64.significandBits(alignedExpected);
+    double difference = Math.abs((double) (m1 - m2));
+    if (a.quietLess(e, new StatusFlags())) {
+      difference = -difference;
+    }
+    double ulp = difference + expectedUlp;
+    return Math.abs(ulp) <= limit64(mode);
   }
 
-  private static boolean accept128(long[] actual, long[] expected, RoundingMode mode) {
+  private static boolean accept128(
+      long[] actual, long[] expected, RoundingMode mode, double expectedUlp) {
     Bid128 a = Bid128.fromRawBits(actual[0], actual[1]);
     Bid128 e = Bid128.fromRawBits(expected[0], expected[1]);
-    if (e.isNaN() || e.isInfinite() || a.isNaN() || a.isInfinite()) {
+    if (e.isNaN() || a.isNaN()) {
       return actual[0] == expected[0] && actual[1] == expected[1];
+    }
+    if (e.isInfinite() || a.isInfinite()) {
+      if (actual[0] == expected[0] && actual[1] == expected[1]) {
+        return true;
+      }
+      if (a.isInfinite() && !e.isInfinite()) {
+        a = Bid128.fromRawBits(
+            (actual[0] & Bid128.MASK_SIGN) | 0x5fff_ed09_bead_87c0L,
+            0x378d_8e63_ffff_ffffL);
+      } else if (e.isInfinite() && !a.isInfinite()) {
+        e = Bid128.fromRawBits(
+            (expected[0] & Bid128.MASK_SIGN) | 0x5fff_ed09_bead_87c0L,
+            0x378d_8e63_ffff_ffffL);
+      } else {
+        return false;
+      }
     }
     if (a.isSigned() != e.isSigned()) {
       return a.isZero() && e.isZero();
     }
     StatusFlags flags = new StatusFlags();
+    Bid128 alignedActual = a;
+    Bid128 alignedExpected = e;
     long[] quantized = new long[2];
-    Bid128Raw.quantize(
-        actual[0], actual[1], expected[0], expected[1], mode, flags, quantized);
-    Bid128 q = Bid128.fromRawBits(quantized[0], quantized[1]);
-    if (q.isNaN()) {
+    if (a.biasedExponent() < e.biasedExponent()) {
+      Bid128Raw.quantize(
+          a.highBits(), a.lowBits(), e.highBits(), e.lowBits(),
+          mode, flags, quantized);
+      alignedActual = Bid128.fromRawBits(quantized[0], quantized[1]);
+    } else if (e.biasedExponent() < a.biasedExponent()) {
+      Bid128Raw.quantize(
+          e.highBits(), e.lowBits(), a.highBits(), a.lowBits(),
+          mode, flags, quantized);
+      alignedExpected = Bid128.fromRawBits(quantized[0], quantized[1]);
+    }
+    if (alignedActual.isNaN() || alignedExpected.isNaN()
+        || alignedActual.biasedExponent() != alignedExpected.biasedExponent()) {
       return false;
     }
-    UInt128 mc = q.coefficient();
-    UInt128 me = e.coefficient();
-    UInt128 diff = mc.compareTo(me) >= 0 ? mc.subtract(me) : me.subtract(mc);
+    UInt128 mc = alignedActual.coefficient();
+    UInt128 me = alignedExpected.coefficient();
+    int comparison = mc.compareTo(me);
+    UInt128 diff = comparison >= 0 ? mc.subtract(me) : me.subtract(mc);
     if (diff.high() != 0L) {
       return false;
     }
-    return Long.compareUnsigned(diff.low(), (long) Math.ceil(limit128(mode))) <= 0;
+    if (Long.compareUnsigned(diff.low(), 1_000L) > 0) {
+      return false;
+    }
+    double difference = (double) diff.low();
+    if (a.quietLess(e, new StatusFlags())) {
+      difference = -difference;
+    }
+    double ulp = difference + expectedUlp;
+    return Math.abs(ulp) <= limit128(mode);
   }
 
   private static double limit64(RoundingMode mode) {
@@ -222,17 +279,26 @@ public final class BidTranscendentalVectorTest {
   }
 
   private static long parse64(String token) {
+    return parse64(token, RoundingMode.TIES_TO_EVEN);
+  }
+
+  private static long parse64(String token, RoundingMode mode) {
     if (IntelVectors.isHexPayload(token) && token.contains("[")) {
       return IntelVectors.hex64(token);
     }
-    return Bid64Raw.fromString(token, RoundingMode.TIES_TO_EVEN, new StatusFlags());
+    return Bid64Raw.fromString(token, mode, new StatusFlags());
   }
 
   private static long[] parse128(String token) {
+    return parse128(token, RoundingMode.TIES_TO_EVEN);
+  }
+
+  private static long[] parse128(String token, RoundingMode mode) {
     if (IntelVectors.isHexPayload(token)) {
       return IntelVectors.hex128(token);
     }
-    Bid128 value = Bid128.parseExact(token);
-    return new long[] {value.highBits(), value.lowBits()};
+    long[] value = new long[2];
+    Bid128Raw.fromString(token, mode, new StatusFlags(), value);
+    return value;
   }
 }

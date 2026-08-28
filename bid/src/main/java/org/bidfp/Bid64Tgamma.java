@@ -53,8 +53,9 @@ final class Bid64Tgamma {
       }
       return INF;
     }
-    if (!value.isSigned() && value.biasedExponent() - 398 <= -20) {
-      return Bid64Raw.div(Bid64Log.ONE, x, mode, flags);
+    if (value.biasedExponent() - 398 <= -20) {
+      long reciprocal = Bid64Raw.div(Bid64Log.ONE, x, mode, flags);
+      return Bid64Raw.sub(reciprocal, Bid64Log.ONE, mode, flags);
     }
     long[] packed = new long[2];
     BidConvert.toBinary128From64(x, mode, flags, packed);

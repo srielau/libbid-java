@@ -10,7 +10,7 @@ package org.bidfp;
 import org.bidfp.binary128.Binary128;
 import org.bidfp.binary128.Dpml;
 
-/** Intel {@code bid128_log{,10,2}.c}: 10^±4464 scale and near-1 correction. */
+/** Intel {@code bid128_log{,10,2}.c}: 10^(+/-4464) scale and near-1 correction. */
 final class Bid128Log {
   enum Kind { LN, LOG10, LOG2 }
 
@@ -127,28 +127,22 @@ final class Bid128Log {
   private static void applyNearOne(
       long hi, long lo, Kind kind, RoundingMode mode, StatusFlags flags,
       long[] out) {
-    long[] packed = new long[2];
-    BidConvert.toBinary128From128(hi, lo, mode, flags, packed);
-    Binary128 xq = Binary128.fromRawBits(packed[0], packed[1]);
+    long[] hiPart = new long[2];
+    long[] loPart = new long[2];
+    BidBinary128Convert.toBinary128TwoPart(hi, lo, hiPart, loPart);
+    Binary128 xq = Binary128.fromRawBits(hiPart[0], hiPart[1]);
+    Binary128 xLow = Binary128.fromRawBits(loPart[0], loPart[1]);
     org.bidfp.binary128.RoundingMode binaryMode = BidTranscendental.binaryMode(mode);
     org.bidfp.binary128.StatusFlags local = new org.bidfp.binary128.StatusFlags();
     Binary128 rq = kernel(kind, xq, binaryMode, local);
     Binary128 eBin = Dpml.sub(xq, C_ONE, binaryMode, local);
     Binary128 absE = eBin.isSigned() ? eBin.negate() : eBin;
     if (Bid128Libm.less(absE, C_HALF)) {
-      long[] e = new long[2];
-      Bid128Raw.sub(
-          hi, lo, Bid128Libm.ONE.highBits(), Bid128Libm.ONE.lowBits(),
-          mode, flags, e);
-      long[] tmpPacked = new long[2];
-      BidConvert.toBinary128From128(e[0], e[1], mode, flags, tmpPacked);
-      Binary128 tmpE = Binary128.fromRawBits(tmpPacked[0], tmpPacked[1]);
-      Binary128 rt = Dpml.sub(eBin, tmpE, binaryMode, local);
+      Binary128 rt = Dpml.div(xLow, xq, binaryMode, local);
       if (kind == Kind.LOG2) {
         rt = Dpml.mul(INV_LN2, rt, binaryMode, local);
       }
-      rt = Dpml.div(rt, xq, binaryMode, local);
-      rq = Dpml.sub(rq, rt, binaryMode, local);
+      rq = Dpml.add(rq, rt, binaryMode, local);
     }
     if (kind == Kind.LOG10) {
       rq = Dpml.mul(rq, C_INV_LOG10, binaryMode, local);

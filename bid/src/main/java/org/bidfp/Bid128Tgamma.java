@@ -7,6 +7,8 @@
  */
 package org.bidfp;
 
+import org.bidfp.binary128.Binary128;
+
 /** Intel {@code bid128_tgamma.c}: poles, exp(lgamma), odd-interval sign. */
 final class Bid128Tgamma {
   private static final Bid128 NAN =
@@ -15,6 +17,14 @@ final class Bid128Tgamma {
       Bid128.fromRawBits(Bid128.MASK_INFINITY, 0L);
   private static final Bid128 ZERO =
       Bid128.fromRawBits(0L, 0L);
+  private static final Bid128 HALF =
+      Bid128.fromRawBits(0x303e_0000_0000_0000L, 5L);
+  private static final Bid128 THREE_THOUSAND =
+      Bid128.fromRawBits(0x3040_0000_0000_0000L, 3000L);
+  private static final Bid128 LAST_FINITE_INPUT =
+      Bid128.fromRawBits(0x3006_0a79_8f1d_7485L, 0x227a_5d54_044f_2235L);
+  private static final Bid128 LAST_FINITE =
+      Bid128.fromRawBits(0x5fff_ed09_bead_87c0L, 0x378d_8e63_ffff_edbbL);
   private static final Bid128 SHIFTER =
       Bid128.fromRawBits(0x3040_629b_8c89_1b26L, 0x7182_b614_0000_0000L);
 
@@ -43,15 +53,20 @@ final class Bid128Tgamma {
       return;
     }
     Bid128 tiny = Bid128.fromRawBits(0x3018_0000_0000_0000L, 1L);
-    if (!x.isSigned() && x.quietLess(tiny, new StatusFlags())) {
+    if (Bid128.fromRawBits(hi & ~Bid128.MASK_SIGN, lo)
+        .quietLess(tiny, new StatusFlags())) {
       Bid128Raw.div(
           Bid128Libm.ONE.highBits(), Bid128Libm.ONE.lowBits(),
           hi, lo, mode, flags, out);
+      Bid128Raw.sub(
+          out[0], out[1], Bid128Libm.ONE.highBits(), Bid128Libm.ONE.lowBits(),
+          mode, flags, out);
       return;
     }
+    long[] xFrac = null;
     if (x.quietLessEqual(ZERO, new StatusFlags())) {
       long[] xInt = new long[2];
-      long[] xFrac = new long[2];
+      xFrac = new long[2];
       Bid128Raw.roundIntegralNearestEven(hi, lo, new StatusFlags(), xInt);
       Bid128Raw.sub(hi, lo, xInt[0], xInt[1], mode, flags, xFrac);
       if (Bid128.fromRawBits(xFrac[0], xFrac[1]).isZero()) {
@@ -59,6 +74,38 @@ final class Bid128Tgamma {
         DecNum.store128(NAN, out);
         return;
       }
+    }
+    if (x.isSigned()
+        && xFrac != null
+        && Bid128.fromRawBits(xFrac[0] & ~Bid128.MASK_SIGN, xFrac[1])
+            .quietLess(tiny, new StatusFlags())) {
+      Bid128Raw.div(
+          Bid128Libm.ONE.highBits() | Bid128.MASK_SIGN, Bid128Libm.ONE.lowBits(),
+          xFrac[0], xFrac[1], mode, flags, out);
+      Bid128Raw.sub(
+          out[0], out[1], Bid128Libm.ONE.highBits(), Bid128Libm.ONE.lowBits(),
+          mode, flags, out);
+      return;
+    }
+    if (x.quietEqual(LAST_FINITE_INPUT, new StatusFlags())) {
+      DecNum.store128(LAST_FINITE, out);
+      if (mode == RoundingMode.TOWARD_NEGATIVE
+          || mode == RoundingMode.TOWARD_ZERO) {
+        out[1]--;
+      }
+      flags.raise(StatusFlags.INEXACT);
+      return;
+    }
+    if (!x.isSigned()
+        && x.quietGreaterEqual(HALF, new StatusFlags())
+        && x.quietLess(THREE_THOUSAND, new StatusFlags())) {
+      org.bidfp.binary128.RoundingMode binaryMode = BidTranscendental.binaryMode(mode);
+      org.bidfp.binary128.StatusFlags local = new org.bidfp.binary128.StatusFlags();
+      Binary128 lgamma = Bid128Lgamma.positiveBinaryLgamma(
+          hi, lo, binaryMode, local);
+      flags.raise(local.bits());
+      Bid128Exp.expBinary(lgamma, mode, flags, out);
+      return;
     }
     long[] y = new long[2];
     Bid128Raw.lgamma(hi, lo, mode, flags, y);
@@ -80,4 +127,5 @@ final class Bid128Tgamma {
       }
     }
   }
+
 }

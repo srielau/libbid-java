@@ -96,26 +96,138 @@ final class Bid128Pow {
       DecNum.store128(NAN, out);
       return;
     }
-    long[] packed = new long[2];
-    StatusFlags convertFlags = new StatusFlags();
-    BidConvert.toBinary128From128(xh, xl, mode, convertFlags, packed);
-    Binary128 xd = Binary128.fromRawBits(packed[0], packed[1]);
-    long[] packedY = new long[2];
-    BidConvert.toBinary128From128(yh, yl, mode, convertFlags, packedY);
-    Binary128 yd = Binary128.fromRawBits(packedY[0], packedY[1]);
-    if (xd.isZero()) {
-      if (yd.isZero()) {
-        DecNum.store128(ONE, out);
-      } else if (y.isSigned()) {
-        DecNum.store128(INF, out);
-      } else {
-        DecNum.store128(ZERO, out);
+    StatusFlags intFlags = new StatusFlags();
+    int exactY = Bid128Raw.toInt32(
+        yh, yl, RoundingMode.TIES_TO_EVEN, intFlags, true);
+    if ((intFlags.bits() & (StatusFlags.INEXACT | StatusFlags.INVALID)) == 0
+        && exactY != Integer.MIN_VALUE) {
+      if (exactY != 0) {
+        powInteger(xh, xl, exactY, mode, flags, out);
+        return;
       }
+    }
+    long[] xHiBits = new long[2];
+    long[] xLoBits = new long[2];
+    long[] yHiBits = new long[2];
+    long[] yLoBits = new long[2];
+    BidBinary128Convert.toBinary128TwoPart(
+        xh & ~Bid128.MASK_SIGN, xl, xHiBits, xLoBits);
+    BidBinary128Convert.toBinary128TwoPart(yh, yl, yHiBits, yLoBits);
+    Binary128 xHi = Binary128.fromRawBits(xHiBits[0], xHiBits[1]);
+    Binary128 xLo = Binary128.fromRawBits(xLoBits[0], xLoBits[1]);
+    Binary128 yHi = Binary128.fromRawBits(yHiBits[0], yHiBits[1]);
+    Binary128 yLo = Binary128.fromRawBits(yLoBits[0], yLoBits[1]);
+    if (xHi.isZero() || xHi.isInfinite() || yHi.isInfinite()) {
+      wideRangePow(x, y, odd, mode, flags, out);
       return;
     }
-    BidTranscendental.binary128(xh, xl, yh, yl, mode, flags, Dpml::pow, out);
+    org.bidfp.binary128.RoundingMode binaryMode = BidTranscendental.binaryMode(mode);
+    org.bidfp.binary128.StatusFlags local = new org.bidfp.binary128.StatusFlags();
+    Binary128 result = Dpml.pow(xHi, yHi, binaryMode, local);
+    Binary128 delta = Dpml.mul(
+        yHi, Dpml.div(xLo, xHi, binaryMode, local), binaryMode, local);
+    delta = Dpml.add(
+        delta,
+        Dpml.mul(yLo, Dpml.log(xHi, binaryMode, local), binaryMode, local),
+        binaryMode,
+        local);
+    result = Dpml.add(
+        result, Dpml.mul(result, delta, binaryMode, local), binaryMode, local);
+    flags.raise(local.bits());
+    BidConvert.fromBinary128To128(
+        result.highBits(), result.lowBits(), mode, flags, out);
     if (odd && x.isSigned()) {
       out[0] ^= Bid128.MASK_SIGN;
+    }
+  }
+
+  private static void wideRangePow(
+      Bid128 x,
+      Bid128 y,
+      boolean odd,
+      RoundingMode mode,
+      StatusFlags flags,
+      long[] out) {
+    long[] integerBits = new long[2];
+    Bid128Raw.roundIntegralNearestEven(
+        y.highBits(), y.lowBits(), new StatusFlags(), integerBits);
+    StatusFlags intFlags = new StatusFlags();
+    int integer = Bid128Raw.toInt32(
+        integerBits[0], integerBits[1],
+        RoundingMode.TIES_TO_EVEN, intFlags, false);
+    if ((intFlags.bits() & StatusFlags.INVALID) == 0
+        && integer != Integer.MIN_VALUE) {
+      long[] fraction = new long[2];
+      long[] base = new long[2];
+      long[] log = new long[2];
+      long[] exponent = new long[2];
+      long[] correction = new long[2];
+      Bid128Raw.sub(
+          y.highBits(), y.lowBits(), integerBits[0], integerBits[1],
+          mode, flags, fraction);
+      if (integer == 0) {
+        DecNum.store128(ONE, base);
+      } else {
+        powInteger(
+            x.highBits(), x.lowBits(), integer, mode, flags, base);
+      }
+      Bid128Log.log(
+          x.highBits() & ~Bid128.MASK_SIGN, x.lowBits(), mode, flags, log);
+      Bid128Raw.mul(
+          fraction[0], fraction[1], log[0], log[1],
+          mode, flags, exponent);
+      Bid128Exp.exp(exponent[0], exponent[1], mode, flags, correction);
+      Bid128Raw.mul(
+          base[0], base[1], correction[0], correction[1],
+          mode, flags, out);
+      return;
+    }
+    Bid128 abs = Bid128.fromRawBits(x.highBits() & ~Bid128.MASK_SIGN, x.lowBits());
+    boolean grows = abs.quietGreater(ONE, new StatusFlags()) != y.isSigned();
+    if (grows) {
+      out[0] = Bid128.MASK_INFINITY;
+      out[1] = 0L;
+      flags.raise(StatusFlags.OVERFLOW | StatusFlags.INEXACT);
+    } else {
+      out[0] = 0L;
+      out[1] = 0L;
+      flags.raise(StatusFlags.UNDERFLOW | StatusFlags.INEXACT);
+    }
+    if (odd && x.isSigned()) {
+      out[0] ^= Bid128.MASK_SIGN;
+    }
+  }
+
+  private static void powInteger(
+      long xh,
+      long xl,
+      int signedExponent,
+      RoundingMode mode,
+      StatusFlags flags,
+      long[] out) {
+    int exponent = Math.abs(signedExponent);
+    long[] result = {ONE.highBits(), ONE.lowBits()};
+    long[] power = {xh, xl};
+    while (exponent != 0) {
+      if ((exponent & 1) != 0) {
+        Bid128Raw.mul(
+            result[0], result[1], power[0], power[1],
+            mode, flags, result);
+      }
+      exponent >>>= 1;
+      if (exponent != 0) {
+        Bid128Raw.mul(
+            power[0], power[1], power[0], power[1],
+            mode, flags, power);
+      }
+    }
+    if (signedExponent < 0) {
+      Bid128Raw.div(
+          ONE.highBits(), ONE.lowBits(), result[0], result[1],
+          mode, flags, out);
+    } else {
+      out[0] = result[0];
+      out[1] = result[1];
     }
   }
 }
