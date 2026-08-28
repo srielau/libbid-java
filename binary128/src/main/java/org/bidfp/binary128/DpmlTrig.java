@@ -8,161 +8,106 @@
  */
 package org.bidfp.binary128;
 
-import org.bidfp.binary128.tables.IeeeConstants;
+import org.bidfp.binary128.tables.TrigX;
 
 /**
  * Radian sin/cos/tan (DPML {@code dpml_ux_trig.c}). Decimal Payne-Hanek
  * moduli from {@code bid64_sin.c} are not used here.
  */
 public final class DpmlTrig {
+  private static final int ODD_POLY_FLAGS =
+      UxEval.SQUARE_TERM | UxEval.ALTERNATE_SIGN | UxEval.POST_MULTIPLY;
+  private static final int EVEN_POLY_FLAGS =
+      UxEval.SQUARE_TERM | UxEval.ALTERNATE_SIGN;
+  private static final int SIN_POLY_FLAGS = UxEval.numeratorFlags(ODD_POLY_FLAGS);
+  private static final int COS_POLY_FLAGS = UxEval.denominatorFlags(EVEN_POLY_FLAGS);
+  private static final Binary128 INFINITY_NAN =
+      Binary128.fromRawBits(0xffff_8000_0000_0000L, 0L);
+
   private DpmlTrig() {
   }
 
   public static Binary128 sin(Binary128 x, RoundingMode mode, StatusFlags st) {
-    Unpacked a = UxOps.unpack(x);
-    if (specialTrig(a, st)) {
-      return a.isNaN() ? Binary128.canonicalNaN(false) : Binary128.canonicalNaN(false);
-    }
-    if (a.isInfinite()) {
-      st.raise(StatusFlags.INVALID);
-      return Binary128.canonicalNaN(false);
-    }
-    if (a.isZero()) {
-      return x;
-    }
-    int q = reduce(a, st);
-    Unpacked s = new Unpacked();
-    Unpacked c = new Unpacked();
-    kernel(a, s, c, st);
-    Unpacked r;
-    switch (q & 3) {
-      case 0:
-        r = s;
-        break;
-      case 1:
-        r = c;
-        break;
-      case 2:
-        UxOps.negate(s);
-        r = s;
-        break;
-      default:
-        UxOps.negate(c);
-        r = c;
-        break;
-    }
-    return UxOps.pack(r, mode, st);
+    return sincos(x, 0, mode, st);
   }
 
   public static Binary128 cos(Binary128 x, RoundingMode mode, StatusFlags st) {
-    Unpacked a = UxOps.unpack(x);
-    if (a.isNaN()) {
-      if (a.signaling) {
-        st.raise(StatusFlags.INVALID);
-      }
-      return Binary128.canonicalNaN(false);
-    }
-    if (a.isInfinite()) {
-      st.raise(StatusFlags.INVALID);
-      return Binary128.canonicalNaN(false);
-    }
-    if (a.isZero()) {
-      return Binary128.ONE;
-    }
-    int q = reduce(a, st);
-    Unpacked s = new Unpacked();
-    Unpacked c = new Unpacked();
-    kernel(a, s, c, st);
-    Unpacked r;
-    switch (q & 3) {
-      case 0:
-        r = c;
-        break;
-      case 1:
-        UxOps.negate(s);
-        r = s;
-        break;
-      case 2:
-        UxOps.negate(c);
-        r = c;
-        break;
-      default:
-        r = s;
-        break;
-    }
-    return UxOps.pack(r, mode, st);
+    return sincos(x, 2, mode, st);
   }
 
   public static Binary128 tan(Binary128 x, RoundingMode mode, StatusFlags st) {
-    Binary128 s = sin(x, mode, new StatusFlags());
-    Binary128 c = cos(x, mode, new StatusFlags());
-    return UxOps.div(s, c, mode, st);
+    Unpacked argument = UxOps.unpack(x);
+    Binary128 special = special(x, argument, false, st);
+    if (special != null) {
+      return special;
+    }
+
+    Unpacked reduced = new Unpacked();
+    int quadrant = UxRadianReduce.reduce(argument, 0, reduced, st);
+    Unpacked numerator = new Unpacked();
+    Unpacked denominator = new Unpacked();
+    UxEval.evaluateRational(
+        reduced,
+        TrigX.TABLE,
+        TrigX.TANCOT_COEF_ARRAY,
+        TrigX.TANCOT_COEF_ARRAY_DEGREE,
+        SIN_POLY_FLAGS | COS_POLY_FLAGS | UxEval.NO_DIVIDE,
+        new Unpacked[] {numerator, denominator},
+        st);
+    Unpacked result = new Unpacked();
+    if ((quadrant & 1) == 0) {
+      UxOps.divUnpacked(numerator, denominator, result, st);
+    } else {
+      UxOps.divUnpacked(denominator, numerator, result, st);
+      UxOps.negate(result);
+    }
+    return UxOps.pack(result, mode, st);
   }
 
-  private static boolean specialTrig(Unpacked a, StatusFlags st) {
-    if (a.isNaN()) {
-      if (a.signaling) {
+  private static Binary128 sincos(
+      Binary128 x, int octant, RoundingMode mode, StatusFlags st) {
+    Unpacked argument = UxOps.unpack(x);
+    Binary128 special = special(x, argument, octant != 0, st);
+    if (special != null) {
+      return special;
+    }
+
+    Unpacked reduced = new Unpacked();
+    int quadrant = UxRadianReduce.reduce(argument, octant, reduced, st);
+    Unpacked result = new Unpacked();
+    int flags = (quadrant & 1) == 0
+        ? UxEval.SKIP | SIN_POLY_FLAGS
+        : UxEval.SKIP | COS_POLY_FLAGS;
+    UxEval.evaluateRational(
+        reduced,
+        TrigX.TABLE,
+        TrigX.SINCOS_COEF_ARRAY,
+        TrigX.SINCOS_COEF_ARRAY_DEGREE,
+        flags,
+        result,
+        st);
+    if ((quadrant & 2) != 0) {
+      UxOps.negate(result);
+    }
+    return UxOps.pack(result, mode, st);
+  }
+
+  private static Binary128 special(
+      Binary128 packed, Unpacked argument, boolean cosine, StatusFlags st) {
+    if (argument.isNaN()) {
+      if (argument.signaling) {
         st.raise(StatusFlags.INVALID);
       }
-      return true;
+      return Binary128.fromRawBits(
+          packed.highBits() | Binary128.QUIET_NAN_BIT, packed.lowBits());
     }
-    return false;
-  }
-
-  private static int reduce(Unpacked a, StatusFlags st) {
-    Unpacked twoPi = UxOps.unpack(IeeeConstants.TWO_PI);
-    Unpacked qv = new Unpacked();
-    KernelEval.div(a, twoPi, qv, st);
-    int n = KernelEval.roundToInt(qv);
-    Unpacked ni = KernelEval.fromInt(n);
-    Unpacked tmp = new Unpacked();
-    KernelEval.mul(ni, twoPi, tmp, st);
-    Unpacked r = new Unpacked();
-    KernelEval.sub(a, tmp, r, st);
-    Unpacked pi2 = UxOps.unpack(IeeeConstants.PI_2);
-    KernelEval.div(r, pi2, qv, st);
-    int q = KernelEval.roundToInt(qv);
-    ni = KernelEval.fromInt(q);
-    KernelEval.mul(ni, pi2, tmp, st);
-    KernelEval.sub(r, tmp, a, st);
-    a.copyFrom(a);
-    return q;
-  }
-
-  private static void kernel(Unpacked z, Unpacked sinOut, Unpacked cosOut, StatusFlags st) {
-    Unpacked z2 = new Unpacked();
-    KernelEval.mul(z, z, z2, st);
-    Unpacked term = KernelEval.fromInt(1);
-    Unpacked s = z.copy();
-    Unpacked c = KernelEval.fromInt(1);
-    Unpacked tmp = new Unpacked();
-    Unpacked accs = z.copy();
-    Unpacked accc = KernelEval.fromInt(1);
-    for (int k = 1; k <= 20; k++) {
-      KernelEval.mul(term, z2, tmp, st);
-      KernelEval.div(tmp, KernelEval.fromInt(2 * k * (2 * k - 1)), term, st);
-      if ((k & 1) != 0) {
-        UxOps.negate(term);
-      }
-      KernelEval.add(accc, term, tmp, st);
-      accc.copyFrom(tmp);
+    if (argument.isInfinite()) {
+      st.raise(StatusFlags.INVALID);
+      return INFINITY_NAN;
     }
-    term = z.copy();
-    accs.copyFrom(z);
-    Unpacked t = z.copy();
-    for (int k = 1; k <= 20; k++) {
-      KernelEval.mul(t, z2, tmp, st);
-      KernelEval.div(tmp, KernelEval.fromInt((2 * k + 1) * (2 * k)), t, st);
-      if ((k & 1) != 0) {
-        UxOps.negate(t);
-      }
-      KernelEval.add(accs, t, tmp, st);
-      accs.copyFrom(tmp);
-      if ((k & 1) != 0) {
-        UxOps.negate(t);
-      }
+    if (argument.isZero()) {
+      return cosine ? Binary128.ONE : packed;
     }
-    sinOut.copyFrom(accs);
-    cosOut.copyFrom(accc);
+    return null;
   }
 }

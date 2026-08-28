@@ -8,6 +8,8 @@
  */
 package org.bidfp.binary128;
 
+import java.math.BigInteger;
+
 /**
  * Unpacked binary128 operations ported from Intel DPML {@code dpml_ux_ops.c},
  * {@code dpml_ux_ops_64.c}, and {@code dpml_ux_sqrt.c} (64-bit digit path).
@@ -18,12 +20,8 @@ package org.bidfp.binary128;
 public final class UxOps {
   private static final int F_EXP_WIDTH = 15;
   private static final int F_EXP_BIAS = 16383;
-  private static final int F_PRECISION = 113;
   private static final int CSHIFT = 64 - F_EXP_WIDTH;
-  private static final int PACK_EXTRA = 128 - F_PRECISION;
   private static final int MIN_UNBIASED = 1 - F_EXP_BIAS;
-  private static final int MAX_UNBIASED = F_EXP_BIAS;
-  private static final long QNAN_HIGH = 0x7fff_8000_0000_0000L;
 
   private UxOps() {
   }
@@ -99,12 +97,12 @@ public final class UxOps {
       if (u.signaling) {
         status.raise(StatusFlags.INVALID);
       }
-      long high = QNAN_HIGH | (u.sign != 0 ? Binary128.MASK_SIGN : 0L);
-      long payload = u.fracHi << 1 >>> 16;
-      if (payload != 0L) {
-        high |= payload & Binary128.MASK_FRACTION_HIGH;
-      }
-      return Binary128.fromRawBits(high, 0L);
+      long fractionHigh = (u.fracHi >>> F_EXP_WIDTH)
+          & Binary128.MASK_FRACTION_HIGH;
+      long fractionLow = (u.fracHi << CSHIFT) | (u.fracLo >>> F_EXP_WIDTH);
+      fractionHigh |= Binary128.QUIET_NAN_BIT;
+      return Binary128.fromFields(
+          u.sign != 0, 0x7fff, fractionHigh, fractionLow);
     }
     if (u.klass == Unpacked.CLASS_INF) {
       return u.sign != 0 ? Binary128.NEGATIVE_INFINITY : Binary128.POSITIVE_INFINITY;
@@ -112,141 +110,72 @@ public final class UxOps {
     if (u.klass == Unpacked.CLASS_ZERO) {
       return u.sign != 0 ? Binary128.NEGATIVE_ZERO : Binary128.ZERO;
     }
-    normalize(u);
-    if (u.klass == Unpacked.CLASS_ZERO) {
-      return u.sign != 0 ? Binary128.NEGATIVE_ZERO : Binary128.ZERO;
-    }
-
-    int unbiased = u.exponent - 1;
-    long hi = u.fracHi;
-    long lo = u.fracLo;
-    long sticky = 0L;
-    long[] t = new long[2];
-
-    if (unbiased < MIN_UNBIASED) {
-      int denormShift = MIN_UNBIASED - unbiased;
-      sticky |= Wide.shiftRight128Sticky(hi, lo, denormShift, t);
-      hi = t[0];
-      lo = t[1];
-      unbiased = MIN_UNBIASED - 1;
-    }
-
-    int extra = PACK_EXTRA;
-    long roundMask = (1L << extra) - 1L;
-    long roundBits = lo & roundMask;
-    int lsbBit = extra;
-    long lBit = (lo >>> lsbBit) & 1L;
-    long rBit = extra == 0 ? 0L : (lo >>> (extra - 1)) & 1L;
-    long kBit = sticky;
-    if (extra >= 2) {
-      long belowR = lo & ((1L << (extra - 1)) - 1L);
-      if (belowR != 0L) {
-        kBit = 1L;
-      }
-    }
-    if (roundBits != 0L && extra == 1) {
-      kBit |= sticky;
-    }
-
-    int s = u.sign != 0 ? 1 : 0;
-    int index = (s << 3) | ((int) kBit << 2) | ((int) lBit << 1) | (int) rBit;
-    boolean increment = ((mode.bitVector() >>> index) & 1) != 0;
-    boolean inexact = (roundBits | sticky) != 0L;
-
-    if (increment) {
-      long addLo = 1L << extra;
-      boolean ov = Wide.add128(hi, lo, 0L, addLo, t);
-      hi = t[0];
-      lo = t[1];
-      if (ov) {
-        hi = Unpacked.UX_MSB;
-        lo = 0L;
-        unbiased++;
-      } else if ((hi & Unpacked.UX_MSB) == 0L && unbiased >= MIN_UNBIASED) {
-        Wide.shiftRight128Sticky(hi, lo, 1, t);
-        hi = t[0] | Unpacked.UX_MSB;
-        lo = t[1];
-        unbiased++;
-      }
-    }
-
-    if (unbiased > MAX_UNBIASED) {
-      status.raise(StatusFlags.OVERFLOW | StatusFlags.INEXACT);
-      return overflowResult(u.sign != 0, mode);
-    }
-
-    boolean tiny = unbiased < MIN_UNBIASED;
-    if (tiny || (unbiased == MIN_UNBIASED - 1)) {
-      if ((hi | lo) == 0L) {
-        if (inexact) {
-          status.raise(StatusFlags.UNDERFLOW | StatusFlags.INEXACT);
-        }
-        return u.sign != 0 ? Binary128.NEGATIVE_ZERO : Binary128.ZERO;
-      }
-    }
-
-    lo &= ~roundMask;
-    if (inexact) {
-      status.raise(StatusFlags.INEXACT);
-    }
-
-    int biased;
-    if (unbiased < MIN_UNBIASED) {
-      if (inexact) {
-        status.raise(StatusFlags.UNDERFLOW);
-      }
-      if ((hi | lo) == 0L) {
-        return u.sign != 0 ? Binary128.NEGATIVE_ZERO : Binary128.ZERO;
-      }
-      biased = 0;
-    } else {
-      biased = unbiased + F_EXP_BIAS;
-    }
-
-    if (biased >= 0x7fff) {
-      status.raise(StatusFlags.OVERFLOW | StatusFlags.INEXACT);
-      return overflowResult(u.sign != 0, mode);
-    }
-
-    long packedHi = (hi >>> F_EXP_WIDTH) & Binary128.MASK_FRACTION_HIGH;
-    packedHi |= ((long) biased) << 48;
-    if (u.sign != 0) {
-      packedHi |= Binary128.MASK_SIGN;
-    }
-    long packedLo = (hi << CSHIFT) | (lo >>> F_EXP_WIDTH);
-    return Binary128.fromRawBits(packedHi, packedLo);
+    BigInteger fraction = Wide.u128(u.fracHi, u.fracLo);
+    return IeeeRound.binary128(
+        u.sign != 0, fraction, BigInteger.ONE, u.exponent - 128, mode, status);
   }
 
-  private static Binary128 overflowResult(boolean negative, RoundingMode mode) {
-    boolean toInf;
-    switch (mode) {
-      case TOWARD_ZERO:
-        toInf = false;
-        break;
-      case TOWARD_NEGATIVE:
-        toInf = negative;
-        break;
-      case TOWARD_POSITIVE:
-        toInf = !negative;
-        break;
-      default:
-        toInf = true;
-        break;
+  private static Binary128 exactAdd(
+      Binary128 x,
+      Binary128 y,
+      boolean subtract,
+      RoundingMode mode,
+      StatusFlags status) {
+    raiseDenormal(x, y, status);
+    if (x.isNaN() || y.isNaN()) {
+      return propagateNaN(x, y, status);
     }
-    if (toInf) {
-      return negative ? Binary128.NEGATIVE_INFINITY : Binary128.POSITIVE_INFINITY;
+    boolean yNegative = y.isSigned() ^ subtract;
+    if (x.isInfinite() || y.isInfinite()) {
+      if (x.isInfinite() && y.isInfinite() && x.isSigned() != yNegative) {
+        status.raise(StatusFlags.INVALID);
+        return Binary128.NAN;
+      }
+      if (x.isInfinite()) {
+        return x;
+      }
+      return yNegative ? Binary128.NEGATIVE_INFINITY : Binary128.POSITIVE_INFINITY;
     }
-    return negative ? Binary128.NEGATIVE_MAX : Binary128.POSITIVE_MAX;
+    if (x.isZero() && y.isZero()) {
+      boolean negative = x.isSigned() == yNegative
+          ? x.isSigned()
+          : mode == RoundingMode.TOWARD_NEGATIVE;
+      return negative ? Binary128.NEGATIVE_ZERO : Binary128.ZERO;
+    }
+
+    IeeeRound.Finite a = IeeeRound.decode(x);
+    IeeeRound.Finite b = IeeeRound.decode(y);
+    int commonExponent = Math.min(a.exponent, b.exponent);
+    BigInteger left = a.significand.shiftLeft(a.exponent - commonExponent);
+    BigInteger right = b.significand.shiftLeft(b.exponent - commonExponent);
+    if (a.negative) {
+      left = left.negate();
+    }
+    if (yNegative) {
+      right = right.negate();
+    }
+    BigInteger sum = left.add(right);
+    if (sum.signum() == 0) {
+      return mode == RoundingMode.TOWARD_NEGATIVE
+          ? Binary128.NEGATIVE_ZERO : Binary128.ZERO;
+    }
+    return IeeeRound.binary128(
+        sum.signum() < 0,
+        sum.abs(),
+        BigInteger.ONE,
+        commonExponent,
+        mode,
+        status);
   }
 
   public static Binary128 add(
       Binary128 x, Binary128 y, RoundingMode mode, StatusFlags status) {
-    return addsub(x, y, false, mode, status);
+    return exactAdd(x, y, false, mode, status);
   }
 
   public static Binary128 sub(
       Binary128 x, Binary128 y, RoundingMode mode, StatusFlags status) {
-    return addsub(x, y, true, mode, status);
+    return exactAdd(x, y, true, mode, status);
   }
 
   private static Binary128 addsub(
@@ -362,11 +291,30 @@ public final class UxOps {
 
   public static Binary128 mul(
       Binary128 x, Binary128 y, RoundingMode mode, StatusFlags status) {
-    Unpacked a = unpack(x);
-    Unpacked b = unpack(y);
-    Unpacked r = new Unpacked();
-    mulUnpacked(a, b, r, status);
-    return pack(r, mode, status);
+    raiseDenormal(x, y, status);
+    if (x.isNaN() || y.isNaN()) {
+      return propagateNaN(x, y, status);
+    }
+    boolean negative = x.isSigned() ^ y.isSigned();
+    if ((x.isInfinite() && y.isZero()) || (y.isInfinite() && x.isZero())) {
+      status.raise(StatusFlags.INVALID);
+      return Binary128.NAN;
+    }
+    if (x.isInfinite() || y.isInfinite()) {
+      return negative ? Binary128.NEGATIVE_INFINITY : Binary128.POSITIVE_INFINITY;
+    }
+    if (x.isZero() || y.isZero()) {
+      return negative ? Binary128.NEGATIVE_ZERO : Binary128.ZERO;
+    }
+    IeeeRound.Finite a = IeeeRound.decode(x);
+    IeeeRound.Finite b = IeeeRound.decode(y);
+    return IeeeRound.binary128(
+        negative,
+        a.significand.multiply(b.significand),
+        BigInteger.ONE,
+        a.exponent + b.exponent,
+        mode,
+        status);
   }
 
   static void mulUnpacked(Unpacked a, Unpacked b, Unpacked r, StatusFlags status) {
@@ -418,11 +366,34 @@ public final class UxOps {
 
   public static Binary128 div(
       Binary128 x, Binary128 y, RoundingMode mode, StatusFlags status) {
-    Unpacked a = unpack(x);
-    Unpacked b = unpack(y);
-    Unpacked r = new Unpacked();
-    divUnpacked(a, b, r, status);
-    return pack(r, mode, status);
+    raiseDenormal(x, y, status);
+    if (x.isNaN() || y.isNaN()) {
+      return propagateNaN(x, y, status);
+    }
+    boolean negative = x.isSigned() ^ y.isSigned();
+    if ((x.isInfinite() && y.isInfinite()) || (x.isZero() && y.isZero())) {
+      status.raise(StatusFlags.INVALID);
+      return Binary128.NAN;
+    }
+    if (y.isZero()) {
+      status.raise(StatusFlags.DIVIDE_BY_ZERO);
+      return negative ? Binary128.NEGATIVE_INFINITY : Binary128.POSITIVE_INFINITY;
+    }
+    if (x.isZero() || y.isInfinite()) {
+      return negative ? Binary128.NEGATIVE_ZERO : Binary128.ZERO;
+    }
+    if (x.isInfinite()) {
+      return negative ? Binary128.NEGATIVE_INFINITY : Binary128.POSITIVE_INFINITY;
+    }
+    IeeeRound.Finite a = IeeeRound.decode(x);
+    IeeeRound.Finite b = IeeeRound.decode(y);
+    return IeeeRound.binary128(
+        negative,
+        a.significand,
+        b.significand,
+        a.exponent - b.exponent,
+        mode,
+        status);
   }
 
   static void divUnpacked(Unpacked a, Unpacked b, Unpacked r, StatusFlags status) {
@@ -492,10 +463,21 @@ public final class UxOps {
   }
 
   public static Binary128 sqrt(Binary128 x, RoundingMode mode, StatusFlags status) {
-    Unpacked a = unpack(x);
-    Unpacked r = new Unpacked();
-    sqrtUnpacked(a, r, status);
-    return pack(r, mode, status);
+    raiseDenormal(x, null, status);
+    if (x.isNaN()) {
+      return quietNaN(x, status);
+    }
+    if (x.isZero()) {
+      return x;
+    }
+    if (x.isSigned()) {
+      status.raise(StatusFlags.INVALID);
+      return Binary128.NAN;
+    }
+    if (x.isInfinite()) {
+      return x;
+    }
+    return IeeeRound.sqrt(x, mode, status);
   }
 
   static void sqrtUnpacked(Unpacked a, Unpacked r, StatusFlags status) {
@@ -526,19 +508,26 @@ public final class UxOps {
       m = m.shiftLeft(1);
       exp--;
     }
-    java.math.BigInteger root = m.shiftLeft(128).sqrt();
+    BigInteger radicand = m.shiftLeft(128);
+    BigInteger root = radicand.sqrt();
+    boolean sticky = !root.multiply(root).equals(radicand);
     int outExp = exp / 2;
     long[] t = new long[2];
     if (root.bitLength() > 128) {
+      sticky |= root.testBit(0);
       root = root.shiftRight(1);
       outExp++;
     }
     Wide.toU128(root, t);
+    if (sticky) {
+      t[1] |= 1L;
+    }
     r.setNorm(0, outExp, t[0], t[1]);
     normalize(r);
   }
 
   public static int compare(Binary128 x, Binary128 y, StatusFlags status) {
+    raiseDenormal(x, y, status);
     Unpacked a = unpack(x);
     Unpacked b = unpack(y);
     if (a.klass == Unpacked.CLASS_NAN || b.klass == Unpacked.CLASS_NAN) {
@@ -578,6 +567,38 @@ public final class UxOps {
       status.raise(StatusFlags.INVALID);
     }
     r.setNaN(false);
+  }
+
+  private static Binary128 propagateNaN(
+      Binary128 x, Binary128 y, StatusFlags status) {
+    Binary128 selected;
+    if (x.isSignalingNaN()) {
+      selected = x;
+    } else if (y.isSignalingNaN()) {
+      selected = y;
+    } else {
+      selected = x.isNaN() ? x : y;
+    }
+    if (x.isSignalingNaN() || y.isSignalingNaN()) {
+      status.raise(StatusFlags.INVALID);
+    }
+    return Binary128.fromRawBits(
+        selected.highBits() | Binary128.QUIET_NAN_BIT, selected.lowBits());
+  }
+
+  private static Binary128 quietNaN(Binary128 x, StatusFlags status) {
+    if (x.isSignalingNaN()) {
+      status.raise(StatusFlags.INVALID);
+    }
+    return Binary128.fromRawBits(
+        x.highBits() | Binary128.QUIET_NAN_BIT, x.lowBits());
+  }
+
+  private static void raiseDenormal(
+      Binary128 x, Binary128 y, StatusFlags status) {
+    if (x.isSubnormal() || (y != null && y.isSubnormal())) {
+      status.raise(StatusFlags.DENORMAL);
+    }
   }
 
   static void negate(Unpacked u) {

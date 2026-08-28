@@ -101,6 +101,11 @@ public final class Dpml {
     return DpmlInvTrig.atan(x, r, s);
   }
 
+  public static Binary128 atan2(
+      Binary128 y, Binary128 x, RoundingMode r, StatusFlags s) {
+    return DpmlInvTrig.atan2(y, x, r, s);
+  }
+
   public static Binary128 sinh(Binary128 x, RoundingMode r, StatusFlags s) {
     return DpmlHyper.sinh(x, r, s);
   }

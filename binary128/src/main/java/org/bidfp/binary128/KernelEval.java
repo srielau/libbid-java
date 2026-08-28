@@ -8,10 +8,17 @@
  */
 package org.bidfp.binary128;
 
-/** Shared Horner / integer helpers for DPML kernel families. */
+/**
+ * Shared Horner / table-eval helpers for DPML kernel families.
+ *
+ * <p>Rational and packed-poly evaluation are thin facades over
+ * {@link UxEval}; UX table decoding is via {@link UxTable}.
+ */
 final class KernelEval {
   private KernelEval() {
   }
+
+  // ---- Unpacked arithmetic facades ---------------------------------------
 
   static Unpacked fromInt(long n) {
     Unpacked u = new Unpacked();
@@ -52,6 +59,94 @@ final class KernelEval {
     UxOps.divUnpacked(a, b, r, st);
   }
 
+  // ---- UX table decode facades -------------------------------------------
+
+  static Unpacked readUxFloat(long[] table, int byteOffset) {
+    return UxTable.readUxFloat(table, byteOffset);
+  }
+
+  static void readUxFloat(long[] table, int byteOffset, Unpacked dest) {
+    UxTable.readUxFloat(table, byteOffset, dest);
+  }
+
+  static void fixed128ToUnpacked(
+      long[] table, int byteOffset, Unpacked dest) {
+    UxTable.fixed128ToUnpacked(table, byteOffset, dest);
+  }
+
+  static long word64(long[] table, int byteOffset) {
+    return UxTable.word64(table, byteOffset);
+  }
+
+  static double readDouble(long[] table, int byteOffset) {
+    return UxTable.readDouble(table, byteOffset);
+  }
+
+  static int coefBankBytes(int degree) {
+    return UxTable.coefBankBytes(degree);
+  }
+
+  static int readCoefScale(long[] table, int coefsOffset, int degree) {
+    return UxTable.readCoefScale(table, coefsOffset, degree);
+  }
+
+  // ---- Rational / packed-poly facades ------------------------------------
+
+  static void evaluateRational(
+      Unpacked argument,
+      long[] table,
+      int coefsOffset,
+      int degree,
+      long flags,
+      Unpacked result,
+      StatusFlags status) {
+    UxEval.evaluateRational(
+        argument, table, coefsOffset, degree, flags, result, status);
+  }
+
+  static void evaluateRational(
+      Unpacked argument,
+      long[] table,
+      int coefsOffset,
+      int degree,
+      long flags,
+      Unpacked[] results,
+      StatusFlags status) {
+    UxEval.evaluateRational(
+        argument, table, coefsOffset, degree, flags, results, status);
+  }
+
+  static long packScale(int n) {
+    return UxEval.packScale(n);
+  }
+
+  static int getScale(long flags) {
+    return UxEval.getScale(flags);
+  }
+
+  static int numeratorFlags(int n) {
+    return UxEval.numeratorFlags(n);
+  }
+
+  static int denominatorFlags(int n) {
+    return UxEval.denominatorFlags(n);
+  }
+
+  static void evaluatePackedPoly(
+      Unpacked argument,
+      long[] table,
+      int coefsOffset,
+      int degree,
+      long mask,
+      int bias,
+      Unpacked result,
+      StatusFlags status) {
+    UxEval.evaluatePackedPoly(
+        argument, table, coefsOffset, degree, mask, bias, result, status);
+  }
+
+  // ---- Series helpers (debug / fallback) ---------------------------------
+
   /** exp(r) for |r| modest, Horner of Taylor series. */
   static void expSeries(Unpacked r, Unpacked out, StatusFlags st) {
     Unpacked term = fromInt(1);
@@ -68,7 +163,7 @@ final class KernelEval {
     out.copyFrom(acc);
   }
 
-  /** log(1+f) for |f| < 0.5, atanh-style series: 2((f/(2+f)) + (f/(2+f))^3/3+...) */
+  /** log(1+f) for |f| < 0.5, atanh-style series. */
   static void log1pSeries(Unpacked f, Unpacked out, StatusFlags st) {
     Unpacked two = fromInt(2);
     Unpacked den = new Unpacked();
