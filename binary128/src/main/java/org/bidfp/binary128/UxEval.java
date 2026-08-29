@@ -84,12 +84,17 @@ final class UxEval {
       throw new IllegalArgumentException("results[0]");
     }
 
-    Unpacked r0 = results[0];
-    Unpacked r1 = results.length > 1 && results[1] != null
-        ? results[1]
-        : new Unpacked();
-    evaluateRationalCore(
-        argument, table, coefsOffset, degree, flags, r0, r1, status);
+    UxScratch.Frame scratch = UxScratch.acquire();
+    try {
+      Unpacked r0 = results[0];
+      Unpacked r1 = results.length > 1 && results[1] != null
+          ? results[1]
+          : scratch.unpacked(0);
+      evaluateRationalCore(
+          argument, table, coefsOffset, degree, flags, r0, r1, status, scratch);
+    } finally {
+      UxScratch.release(scratch);
+    }
   }
 
   private static void evaluateRationalCore(
@@ -100,14 +105,15 @@ final class UxEval {
       long flags,
       Unpacked r0,
       Unpacked r1,
-      StatusFlags status) {
+      StatusFlags status,
+      UxScratch.Frame scratch) {
     long f = flags;
     long signFlags = f;
     argument.exponent += getScale(f);
 
     Unpacked polyArg;
     if ((f & either(SQUARE_TERM)) != 0) {
-      polyArg = new Unpacked();
+      polyArg = scratch.unpacked(1);
       UxOps.mulUnpacked(argument, argument, polyArg, status);
     } else {
       polyArg = argument;
@@ -128,9 +134,9 @@ final class UxEval {
     if ((f & NUMERATOR_MASK) != 0) {
       Unpacked numOut = (f & DENOMINATOR_MASK) != 0 ? first : r0;
       boolean alt = (signFlags & ALTERNATE_SIGN) != 0;
-      evalPoly(polyArg, table, coefPtr, degree, alt, numOut, status);
+      evalPoly(polyArg, table, coefPtr, degree, alt, numOut, status, scratch);
       if ((f & POST_MULTIPLY) != 0) {
-        Unpacked tmp = new Unpacked();
+        Unpacked tmp = scratch.unpacked(2);
         UxOps.mulUnpacked(argument, numOut, tmp, status);
         numOut.copyFrom(tmp);
       }
@@ -147,9 +153,9 @@ final class UxEval {
 
     if ((f & DENOMINATOR_MASK) != 0) {
       boolean alt = (signFlags & denominatorFlags(ALTERNATE_SIGN)) != 0;
-      evalPoly(polyArg, table, coefPtr, degree, alt, second, status);
+      evalPoly(polyArg, table, coefPtr, degree, alt, second, status, scratch);
       if ((f & denominatorFlags(POST_MULTIPLY)) != 0) {
-        Unpacked tmp = new Unpacked();
+        Unpacked tmp = scratch.unpacked(2);
         UxOps.mulUnpacked(argument, second, tmp, status);
         second.copyFrom(tmp);
       }
@@ -168,8 +174,8 @@ final class UxEval {
 
     if ((f & NO_DIVIDE) == 0) {
       // Always result[0] / result[1] (SWAP places den in [0], num in [1]).
-      Unpacked quot = new Unpacked();
-      UxOps.divUnpacked(r0, r1, quot, status);
+      Unpacked quot = scratch.unpacked(2);
+      UxOps.divUnpacked(r0, r1, quot, status, scratch.division);
       r0.copyFrom(quot);
     }
   }
@@ -183,9 +189,14 @@ final class UxEval {
       long flags,
       Unpacked result,
       StatusFlags status) {
-    evaluateRationalCore(
-        argument, table, coefsOffset, degree, flags,
-        result, new Unpacked(), status);
+    UxScratch.Frame scratch = UxScratch.acquire();
+    try {
+      evaluateRationalCore(
+          argument, table, coefsOffset, degree, flags,
+          result, scratch.unpacked(0), status, scratch);
+    } finally {
+      UxScratch.release(scratch);
+    }
   }
 
   /**
@@ -201,31 +212,36 @@ final class UxEval {
       int bias,
       Unpacked result,
       StatusFlags status) {
-    int metadata = unpackCoefToUx(table, coefsOffset, mask, bias, result);
-    result.sign = (metadata & 1) == ADD ? 0 : Unpacked.UX_SIGN_BIT;
-    result.exponent = metadata >> 1;
+    UxScratch.Frame scratch = UxScratch.acquire();
+    try {
+      int metadata = unpackCoefToUx(table, coefsOffset, mask, bias, result);
+      result.sign = (metadata & 1) == ADD ? 0 : Unpacked.UX_SIGN_BIT;
+      result.exponent = metadata >> 1;
 
-    Unpacked tmp = new Unpacked();
-    Unpacked term = new Unpacked();
-    Unpacked sum = new Unpacked();
-    int off = coefsOffset;
-    int remaining = degree;
-    while (--remaining >= 0) {
-      UxOps.mulUnpacked(argument, result, tmp, status);
-      UxOps.normalize(tmp);
-      result.copyFrom(tmp);
-      off += UxTable.FIXED_128_BYTES;
-      metadata = unpackCoefToUx(table, off, mask, bias, term);
-      term.sign = 0;
-      term.exponent = 0;
-      if ((metadata & 1) == ADD) {
-        UxOps.addsubUnpacked(result, term, sum, status);
-      } else {
-        term.sign = Unpacked.UX_SIGN_BIT;
-        UxOps.addsubUnpacked(result, term, sum, status);
+      Unpacked tmp = scratch.unpacked(0);
+      Unpacked term = scratch.unpacked(1);
+      Unpacked sum = scratch.unpacked(2);
+      int off = coefsOffset;
+      int remaining = degree;
+      while (--remaining >= 0) {
+        UxOps.mulUnpacked(argument, result, tmp, status);
+        UxOps.normalize(tmp);
+        result.copyFrom(tmp);
+        off += UxTable.FIXED_128_BYTES;
+        metadata = unpackCoefToUx(table, off, mask, bias, term);
+        term.sign = 0;
+        term.exponent = 0;
+        if ((metadata & 1) == ADD) {
+          UxOps.addsubUnpacked(result, term, sum, status);
+        } else {
+          term.sign = Unpacked.UX_SIGN_BIT;
+          UxOps.addsubUnpacked(result, term, sum, status);
+        }
+        result.copyFrom(sum);
+        result.exponent += metadata >> 1;
       }
-      result.copyFrom(sum);
-      result.exponent += metadata >> 1;
+    } finally {
+      UxScratch.release(scratch);
     }
   }
 
@@ -266,10 +282,11 @@ final class UxEval {
       int degree,
       boolean alternateSign,
       Unpacked result,
-      StatusFlags status) {
-    Unpacked acc = new Unpacked();
-    Unpacked tmp = new Unpacked();
-    Unpacked coef = new Unpacked();
+      StatusFlags status,
+      UxScratch.Frame scratch) {
+    Unpacked acc = scratch.unpacked(3);
+    Unpacked tmp = scratch.unpacked(4);
+    Unpacked coef = scratch.unpacked(5);
     UxTable.fixed128ToUnpacked(table, coefsOffset, acc);
     for (int k = 1; k <= degree; k++) {
       UxOps.mulUnpacked(acc, polyArg, tmp, status);

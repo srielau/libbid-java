@@ -29,6 +29,8 @@ public final class Bid128 implements Comparable<Bid128> {
       new UInt128(0x0000_314d_c644_8d93L, 0x38c1_5b09_ffff_ffffL);
   private static final long[][] POW10 = powersOfTenBits();
   private static final long[] POW10_LONG = powersOfTenLong();
+  private static final ThreadLocal<long[]> DIVIDE_RESULT =
+      ThreadLocal.withInitial(() -> new long[2]);
 
   public static final Bid128 POSITIVE_INFINITY = fromRawBits(MASK_INFINITY, 0);
   public static final Bid128 NEGATIVE_INFINITY =
@@ -359,7 +361,7 @@ public final class Bid128 implements Comparable<Bid128> {
   }
 
   public Bid128 divide(Bid128 other, RoundingMode mode, StatusFlags flags) {
-    long[] result = new long[2];
+    long[] result = DIVIDE_RESULT.get();
     Bid128Raw.div(high, low, other.high, other.low, mode, flags, result);
     return fromRawBits(result[0], result[1]);
   }

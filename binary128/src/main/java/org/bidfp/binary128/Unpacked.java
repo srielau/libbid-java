@@ -117,7 +117,7 @@ public final class Unpacked {
   void setNaN(boolean signalingNan) {
     sign = 0;
     exponent = UX_INFINITY_EXPONENT;
-    fracHi = UX_MSB | (signalingNan ? 0x4000_0000_0000_0000L : 0x6000_0000_0000_0000L);
+    fracHi = UX_MSB | 0x4000_0000_0000_0000L;
     fracLo = 0L;
     klass = CLASS_NAN;
     signaling = signalingNan;

@@ -61,7 +61,7 @@ final class DpmlErfExp {
   private static Unpacked exp(Unpacked x, StatusFlags status) {
     Unpacked product = new Unpacked();
     UxOps.mulUnpacked(x, UxOps.unpack(IeeeConstants.LOG2E), product, status);
-    int scale = nearestInteger(product);
+    int scale = DpmlPowCbrtSupport.nearestInt(product);
 
     Unpacked integer = KernelEval.fromInt(scale);
     Unpacked ln2High = new Unpacked();
@@ -95,32 +95,5 @@ final class DpmlErfExp {
         status);
     result.exponent += scale;
     return result;
-  }
-
-  private static int nearestInteger(Unpacked value) {
-    Unpacked x = value.copy();
-    int sign = x.sign;
-    x.sign = 0;
-    UxOps.normalize(x);
-    int fractionalBits = 128 - x.exponent;
-    if (fractionalBits <= 0) {
-      long integer = x.fracLo << -fractionalBits;
-      return sign == 0 ? (int) integer : (int) -integer;
-    }
-    if (fractionalBits >= 128) {
-      return 0;
-    }
-
-    java.math.BigInteger significand = Wide.u128(x.fracHi, x.fracLo);
-    java.math.BigInteger integer = significand.shiftRight(fractionalBits);
-    java.math.BigInteger remainder =
-        significand.subtract(integer.shiftLeft(fractionalBits));
-    java.math.BigInteger halfway = java.math.BigInteger.ONE.shiftLeft(fractionalBits - 1);
-    int comparison = remainder.compareTo(halfway);
-    if (comparison > 0 || (comparison == 0 && integer.testBit(0))) {
-      integer = integer.add(java.math.BigInteger.ONE);
-    }
-    int result = integer.intValue();
-    return sign == 0 ? result : -result;
   }
 }

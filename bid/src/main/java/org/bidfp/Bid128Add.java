@@ -42,6 +42,8 @@ public final class Bid128Add {
   private static final long[][] POW10 = powersOfTen();
   private static final UInt128 MAX_NAN_PAYLOAD =
       new UInt128(0x0000_314d_c644_8d93L, 0x38c1_5b09_ffff_ffffL);
+  private static final ThreadLocal<UInt256> MAGNITUDE =
+      ThreadLocal.withInitial(UInt256::new);
 
   private Bid128Add() {
   }
@@ -221,7 +223,8 @@ public final class Bid128Add {
           flags);
     }
 
-    UInt256 magnitude = new UInt256(aHigh, aLow);
+    UInt256 magnitude = MAGNITUDE.get();
+    magnitude.set128(aHigh, aLow);
     magnitude.multiplyPower10(difference);
     boolean negative;
     if (aNegative == bNegative) {
@@ -597,9 +600,7 @@ public final class Bid128Add {
     private long midLow;
     private long low;
 
-    private UInt256(long coefficientHigh, long coefficientLow) {
-      midLow = coefficientHigh;
-      low = coefficientLow;
+    private UInt256() {
     }
 
     private void multiplyPower10(int power) {

@@ -8,12 +8,8 @@
  */
 package org.bidfp.binary128;
 
-import java.math.BigInteger;
-
 /** Family-private exact classification and exponent helpers for pow and cbrt. */
 final class DpmlPowCbrtSupport {
-  private static final BigInteger MASK_64 = BigInteger.ONE.shiftLeft(64).subtract(BigInteger.ONE);
-
   private DpmlPowCbrtSupport() {
   }
 
@@ -52,40 +48,56 @@ final class DpmlPowCbrtSupport {
     if (e > Binary128.SIGNIFICAND_BITS) {
       return 1;
     }
-    BigInteger sig = unsigned(value.significandHigh()).shiftLeft(64)
-        .or(unsigned(value.significandLow()));
     int fractionalBits = Binary128.SIGNIFICAND_BITS - e;
-    if (fractionalBits != 0
-        && sig.and(BigInteger.ONE.shiftLeft(fractionalBits).subtract(BigInteger.ONE))
-            .signum() != 0) {
+    long high = value.significandHigh();
+    long low = value.significandLow();
+    if (fractionalBits < 64) {
+      long mask = fractionalBits == 0 ? 0L : (1L << fractionalBits) - 1L;
+      if ((low & mask) != 0L) {
+        return 0;
+      }
+      return ((low >>> fractionalBits) & 1L) != 0L ? 2 : 1;
+    }
+    if (low != 0L) {
       return 0;
     }
-    return sig.testBit(fractionalBits) ? 2 : 1;
+    int highFractionalBits = fractionalBits - 64;
+    long mask = highFractionalBits == 0
+        ? 0L
+        : (1L << highFractionalBits) - 1L;
+    if ((high & mask) != 0L) {
+      return 0;
+    }
+    return ((high >>> highFractionalBits) & 1L) != 0L ? 2 : 1;
   }
 
   /** Round a finite UX value to the nearest integer, ties to even. */
   static int nearestInt(Unpacked value) {
-    Unpacked u = value.copy();
-    UxOps.normalize(u);
-    if (u.exponent <= 0) {
-      return 0;
-    }
-    if (u.exponent > 31) {
-      return u.sign != 0 ? Integer.MIN_VALUE : Integer.MAX_VALUE;
-    }
-    BigInteger sig = unsigned(u.fracHi).shiftLeft(64).or(unsigned(u.fracLo));
-    int shift = 128 - u.exponent;
-    BigInteger integer = sig.shiftRight(shift);
-    if (shift > 0) {
-      BigInteger remainder = sig.and(BigInteger.ONE.shiftLeft(shift).subtract(BigInteger.ONE));
-      BigInteger half = BigInteger.ONE.shiftLeft(shift - 1);
-      int cmp = remainder.compareTo(half);
-      if (cmp > 0 || (cmp == 0 && integer.testBit(0))) {
-        integer = integer.add(BigInteger.ONE);
+    UxScratch.Frame scratch = UxScratch.acquire();
+    try {
+      Unpacked u = scratch.unpacked(0);
+      u.copyFrom(value);
+      UxOps.normalize(u);
+      if (u.exponent <= 0) {
+        return 0;
       }
+      if (u.exponent > 31) {
+        return u.sign != 0 ? Integer.MIN_VALUE : Integer.MAX_VALUE;
+      }
+      int shift = 128 - u.exponent;
+      int highShift = shift - 64;
+      long integer = u.fracHi >>> highShift;
+      long lowerMask = (1L << (highShift - 1)) - 1L;
+      boolean halfway = (u.fracHi & (1L << (highShift - 1))) != 0L;
+      boolean belowHalf = (u.fracHi & lowerMask) != 0L || u.fracLo != 0L;
+      if (halfway && (belowHalf || (integer & 1L) != 0L)) {
+        integer++;
+      }
+      int result = (int) integer;
+      return u.sign != 0 ? -result : result;
+    } finally {
+      UxScratch.release(scratch);
     }
-    int result = integer.intValue();
-    return u.sign != 0 ? -result : result;
   }
 
   static double normalizedFractionAsDouble(Unpacked value) {
@@ -101,10 +113,5 @@ final class DpmlPowCbrtSupport {
 
   static int floorMod3(int value) {
     return value - 3 * floorDiv3(value);
-  }
-
-  private static BigInteger unsigned(long value) {
-    BigInteger result = BigInteger.valueOf(value);
-    return value < 0L ? result.add(MASK_64).add(BigInteger.ONE) : result;
   }
 }

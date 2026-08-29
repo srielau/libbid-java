@@ -153,80 +153,38 @@ public final class UxOps {
     };
   }
 
-  private static Binary128 exactAdd(
-      Binary128 x,
-      Binary128 y,
-      boolean subtract,
-      RoundingMode mode,
-      StatusFlags status) {
-    raiseDenormal(x, y, status);
-    if (x.isNaN() || y.isNaN()) {
-      return propagateNaN(x, y, status);
-    }
-    boolean yNegative = y.isSigned() ^ subtract;
-    if (x.isInfinite() || y.isInfinite()) {
-      if (x.isInfinite() && y.isInfinite() && x.isSigned() != yNegative) {
-        status.raise(StatusFlags.INVALID);
-        return Binary128.NAN;
-      }
-      if (x.isInfinite()) {
-        return x;
-      }
-      return yNegative ? Binary128.NEGATIVE_INFINITY : Binary128.POSITIVE_INFINITY;
-    }
-    if (x.isZero() && y.isZero()) {
-      boolean negative = x.isSigned() == yNegative
-          ? x.isSigned()
-          : mode == RoundingMode.TOWARD_NEGATIVE;
-      return negative ? Binary128.NEGATIVE_ZERO : Binary128.ZERO;
-    }
-
-    IeeeRound.Finite a = IeeeRound.decode(x);
-    IeeeRound.Finite b = IeeeRound.decode(y);
-    int commonExponent = Math.min(a.exponent, b.exponent);
-    BigInteger left = a.significand.shiftLeft(a.exponent - commonExponent);
-    BigInteger right = b.significand.shiftLeft(b.exponent - commonExponent);
-    if (a.negative) {
-      left = left.negate();
-    }
-    if (yNegative) {
-      right = right.negate();
-    }
-    BigInteger sum = left.add(right);
-    if (sum.signum() == 0) {
-      return mode == RoundingMode.TOWARD_NEGATIVE
-          ? Binary128.NEGATIVE_ZERO : Binary128.ZERO;
-    }
-    return IeeeRound.binary128(
-        sum.signum() < 0,
-        sum.abs(),
-        BigInteger.ONE,
-        commonExponent,
-        mode,
-        status);
-  }
-
   public static Binary128 add(
       Binary128 x, Binary128 y, RoundingMode mode, StatusFlags status) {
-    return exactAdd(x, y, false, mode, status);
+    return addsub(x, y, false, mode, status);
   }
 
   public static Binary128 sub(
       Binary128 x, Binary128 y, RoundingMode mode, StatusFlags status) {
-    return exactAdd(x, y, true, mode, status);
+    return addsub(x, y, true, mode, status);
   }
 
   private static Binary128 addsub(
       Binary128 x, Binary128 y, boolean subtract,
       RoundingMode mode, StatusFlags status) {
-    Unpacked a = unpack(x);
-    Unpacked b = unpack(y);
-    if (subtract) {
-      b.sign ^= Unpacked.UX_SIGN_BIT;
+    raiseDenormal(x, y, status);
+    UxScratch.Frame scratch = UxScratch.acquire();
+    try {
+      Unpacked a = scratch.unpacked(0);
+      Unpacked b = scratch.unpacked(1);
+      Unpacked r = scratch.unpacked(2);
+      unpackInto(x, a);
+      unpackInto(y, b);
+      if (subtract) {
+        negate(b);
+      }
+      addsubUnpacked(a, b, r, status);
+      if (r.klass == Unpacked.CLASS_ZERO && a.sign != b.sign) {
+        r.sign = mode == RoundingMode.TOWARD_NEGATIVE ? Unpacked.UX_SIGN_BIT : 0;
+      }
+      return pack(r, mode, status);
+    } finally {
+      UxScratch.release(scratch);
     }
-    Unpacked r = new Unpacked();
-    addsubUnpacked(a, b, r, status);
-    return pack(r, mode, status);
   }
 
   static void addsubUnpacked(Unpacked a, Unpacked b, Unpacked r, StatusFlags status) {
@@ -358,29 +316,18 @@ public final class UxOps {
   public static Binary128 mul(
       Binary128 x, Binary128 y, RoundingMode mode, StatusFlags status) {
     raiseDenormal(x, y, status);
-    if (x.isNaN() || y.isNaN()) {
-      return propagateNaN(x, y, status);
+    UxScratch.Frame scratch = UxScratch.acquire();
+    try {
+      Unpacked a = scratch.unpacked(0);
+      Unpacked b = scratch.unpacked(1);
+      Unpacked r = scratch.unpacked(2);
+      unpackInto(x, a);
+      unpackInto(y, b);
+      mulUnpacked(a, b, r, status);
+      return pack(r, mode, status);
+    } finally {
+      UxScratch.release(scratch);
     }
-    boolean negative = x.isSigned() ^ y.isSigned();
-    if ((x.isInfinite() && y.isZero()) || (y.isInfinite() && x.isZero())) {
-      status.raise(StatusFlags.INVALID);
-      return Binary128.NAN;
-    }
-    if (x.isInfinite() || y.isInfinite()) {
-      return negative ? Binary128.NEGATIVE_INFINITY : Binary128.POSITIVE_INFINITY;
-    }
-    if (x.isZero() || y.isZero()) {
-      return negative ? Binary128.NEGATIVE_ZERO : Binary128.ZERO;
-    }
-    IeeeRound.Finite a = IeeeRound.decode(x);
-    IeeeRound.Finite b = IeeeRound.decode(y);
-    return IeeeRound.binary128(
-        negative,
-        a.significand.multiply(b.significand),
-        BigInteger.ONE,
-        a.exponent + b.exponent,
-        mode,
-        status);
   }
 
   static void mulUnpacked(Unpacked a, Unpacked b, Unpacked r, StatusFlags status) {
@@ -454,36 +401,31 @@ public final class UxOps {
   public static Binary128 div(
       Binary128 x, Binary128 y, RoundingMode mode, StatusFlags status) {
     raiseDenormal(x, y, status);
-    if (x.isNaN() || y.isNaN()) {
-      return propagateNaN(x, y, status);
+    UxScratch.Frame scratch = UxScratch.acquire();
+    try {
+      Unpacked a = scratch.unpacked(0);
+      Unpacked b = scratch.unpacked(1);
+      Unpacked r = scratch.unpacked(2);
+      unpackInto(x, a);
+      unpackInto(y, b);
+      divUnpacked(a, b, r, status, scratch.division);
+      return pack(r, mode, status);
+    } finally {
+      UxScratch.release(scratch);
     }
-    boolean negative = x.isSigned() ^ y.isSigned();
-    if ((x.isInfinite() && y.isInfinite()) || (x.isZero() && y.isZero())) {
-      status.raise(StatusFlags.INVALID);
-      return Binary128.NAN;
-    }
-    if (y.isZero()) {
-      status.raise(StatusFlags.DIVIDE_BY_ZERO);
-      return negative ? Binary128.NEGATIVE_INFINITY : Binary128.POSITIVE_INFINITY;
-    }
-    if (x.isZero() || y.isInfinite()) {
-      return negative ? Binary128.NEGATIVE_ZERO : Binary128.ZERO;
-    }
-    if (x.isInfinite()) {
-      return negative ? Binary128.NEGATIVE_INFINITY : Binary128.POSITIVE_INFINITY;
-    }
-    IeeeRound.Finite a = IeeeRound.decode(x);
-    IeeeRound.Finite b = IeeeRound.decode(y);
-    return IeeeRound.binary128(
-        negative,
-        a.significand,
-        b.significand,
-        a.exponent - b.exponent,
-        mode,
-        status);
   }
 
   static void divUnpacked(Unpacked a, Unpacked b, Unpacked r, StatusFlags status) {
+    UxScratch.Frame scratch = UxScratch.acquire();
+    try {
+      divUnpacked(a, b, r, status, scratch.division);
+    } finally {
+      UxScratch.release(scratch);
+    }
+  }
+
+  static void divUnpacked(
+      Unpacked a, Unpacked b, Unpacked r, StatusFlags status, long[] division) {
     if (a.klass == Unpacked.CLASS_NAN || b.klass == Unpacked.CLASS_NAN) {
       propagateNaN(a, b, r, status);
       return;
@@ -522,28 +464,27 @@ public final class UxOps {
     }
     normalize(a);
     normalize(b);
-    long[] q = new long[3];
-    long[] rem = new long[2];
-    Wide.divFrac128(a.fracHi, a.fracLo, b.fracHi, b.fracLo, q, rem);
+    Wide.divFrac128(a.fracHi, a.fracLo, b.fracHi, b.fracLo, division);
     int exp = a.exponent - b.exponent;
     long hi;
     long lo;
-    if (q[0] != 0L) {
-      hi = (q[0] << 63) | (q[1] >>> 1);
-      lo = (q[1] << 63) | (q[2] >>> 1);
+    if (division[0] != 0L) {
+      if ((division[2] & 1L) != 0L) {
+        division[4] |= 1L;
+      }
+      hi = (division[0] << 63) | (division[1] >>> 1);
+      lo = (division[1] << 63) | (division[2] >>> 1);
       exp++;
     } else {
-      hi = q[1];
-      lo = q[2];
+      hi = division[1];
+      lo = division[2];
     }
-    if ((rem[0] | rem[1]) != 0L) {
+    if ((division[3] | division[4]) != 0L) {
       lo |= 1L;
     }
     if ((hi & Unpacked.UX_MSB) == 0L) {
-      long[] t = new long[2];
-      Wide.shiftLeft128(hi, lo, 1, t);
-      hi = t[0];
-      lo = t[1];
+      hi = (hi << 1) | (lo >>> 63);
+      lo <<= 1;
       exp--;
     }
     r.setNorm(sign, exp, hi, lo);
@@ -551,28 +492,35 @@ public final class UxOps {
 
   public static Binary128 sqrt(Binary128 x, RoundingMode mode, StatusFlags status) {
     raiseDenormal(x, null, status);
-    if (x.isNaN()) {
-      return quietNaN(x, status);
+    UxScratch.Frame scratch = UxScratch.acquire();
+    try {
+      Unpacked a = scratch.unpacked(0);
+      Unpacked r = scratch.unpacked(1);
+      unpackInto(x, a);
+      sqrtUnpacked(a, r, status, scratch);
+      return pack(r, mode, status);
+    } finally {
+      UxScratch.release(scratch);
     }
-    if (x.isZero()) {
-      return x;
-    }
-    if (x.isSigned()) {
-      status.raise(StatusFlags.INVALID);
-      return Binary128.NAN;
-    }
-    if (x.isInfinite()) {
-      return x;
-    }
-    return IeeeRound.sqrt(x, mode, status);
   }
 
   static void sqrtUnpacked(Unpacked a, Unpacked r, StatusFlags status) {
+    UxScratch.Frame scratch = UxScratch.acquire();
+    try {
+      sqrtUnpacked(a, r, status, scratch);
+    } finally {
+      UxScratch.release(scratch);
+    }
+  }
+
+  private static void sqrtUnpacked(
+      Unpacked a, Unpacked r, StatusFlags status, UxScratch.Frame scratch) {
     if (a.klass == Unpacked.CLASS_NAN) {
       if (a.signaling) {
         status.raise(StatusFlags.INVALID);
       }
-      r.setNaN(false);
+      r.copyFrom(a);
+      r.signaling = false;
       return;
     }
     if (a.klass == Unpacked.CLASS_ZERO) {
@@ -590,26 +538,29 @@ public final class UxOps {
     }
     normalize(a);
     int exp = a.exponent;
-    java.math.BigInteger m = Wide.u128(a.fracHi, a.fracLo);
-    if ((exp & 1) != 0) {
-      m = m.shiftLeft(1);
+    boolean odd = (exp & 1) != 0;
+    if (odd) {
       exp--;
     }
-    BigInteger radicand = m.shiftLeft(128);
-    BigInteger root = radicand.sqrt();
-    boolean sticky = !root.multiply(root).equals(radicand);
+    long[] root = scratch.root;
+    boolean sticky = Wide.sqrtScaled128(
+        a.fracHi, a.fracLo, odd, root, scratch.remainder, scratch.trial);
     int outExp = exp / 2;
-    long[] t = new long[2];
-    if (root.bitLength() > 128) {
-      sticky |= root.testBit(0);
-      root = root.shiftRight(1);
+    long high;
+    long low;
+    if (root[0] != 0L) {
+      sticky |= (root[2] & 1L) != 0L;
+      high = (root[0] << 63) | (root[1] >>> 1);
+      low = (root[1] << 63) | (root[2] >>> 1);
       outExp++;
+    } else {
+      high = root[1];
+      low = root[2];
     }
-    Wide.toU128(root, t);
     if (sticky) {
-      t[1] |= 1L;
+      low |= 1L;
     }
-    r.setNorm(0, outExp, t[0], t[1]);
+    r.setNorm(0, outExp, high, low);
     normalize(r);
   }
 
@@ -653,32 +604,16 @@ public final class UxOps {
     if (a.isSignalingNaN() || b.isSignalingNaN()) {
       status.raise(StatusFlags.INVALID);
     }
-    r.setNaN(false);
-  }
-
-  private static Binary128 propagateNaN(
-      Binary128 x, Binary128 y, StatusFlags status) {
-    Binary128 selected;
-    if (x.isSignalingNaN()) {
-      selected = x;
-    } else if (y.isSignalingNaN()) {
-      selected = y;
+    Unpacked selected;
+    if (a.isSignalingNaN()) {
+      selected = a;
+    } else if (b.isSignalingNaN()) {
+      selected = b;
     } else {
-      selected = x.isNaN() ? x : y;
+      selected = a.isNaN() ? a : b;
     }
-    if (x.isSignalingNaN() || y.isSignalingNaN()) {
-      status.raise(StatusFlags.INVALID);
-    }
-    return Binary128.fromRawBits(
-        selected.highBits() | Binary128.QUIET_NAN_BIT, selected.lowBits());
-  }
-
-  private static Binary128 quietNaN(Binary128 x, StatusFlags status) {
-    if (x.isSignalingNaN()) {
-      status.raise(StatusFlags.INVALID);
-    }
-    return Binary128.fromRawBits(
-        x.highBits() | Binary128.QUIET_NAN_BIT, x.lowBits());
+    r.copyFrom(selected);
+    r.signaling = false;
   }
 
   private static void raiseDenormal(

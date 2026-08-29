@@ -120,7 +120,10 @@ public final class Bid64Multiply {
     long productLow = xCoefficient * yCoefficient;
     long productHigh = unsignedMultiplyHigh(xCoefficient, yCoefficient);
     int extraDigits = extraDecimalDigits(productHigh, productLow);
-    int productDigits = extraDigits == 0 ? decimalDigits(productLow) : extraDigits + 16;
+    if (extraDigits == 0 && exponent >= 0 && exponent <= MAX_EXPONENT) {
+      return Bid64.finiteRawBits(negative, exponent, productLow);
+    }
+    int productDigits = extraDigits == 0 ? 0 : extraDigits + 16;
     int resultExponent = exponent + extraDigits;
     if (resultExponent < 0) {
       extraDigits -= resultExponent;
@@ -136,8 +139,9 @@ public final class Bid64Multiply {
         remainder = 0L;
       } else {
         long divisor = POW10[extraDigits];
-        coefficient =
-            Bid64Divide.divide128By64(productHigh, productLow, divisor);
+        coefficient = productHigh == 0
+            ? Long.divideUnsigned(productLow, divisor)
+            : Bid64Divide.divide128By64(productHigh, productLow, divisor);
         remainder = productLow - coefficient * divisor;
       }
       inexact = remainder != 0;
@@ -146,6 +150,9 @@ public final class Bid64Multiply {
         coefficient++;
       }
     } else {
+      if (productDigits == 0) {
+        productDigits = decimalDigits(productLow);
+      }
       if (extraDigits > productDigits) {
         coefficient = 0L;
         inexact = true;
@@ -263,13 +270,22 @@ public final class Bid64Multiply {
   }
 
   private static int extraDecimalDigits(long valueHigh, long valueLow) {
-    if (valueHigh == 0
-        && Long.compareUnsigned(valueLow, MAX_COEFFICIENT) <= 0) {
-      return 0;
+    if (valueHigh == 0) {
+      if (Long.compareUnsigned(valueLow, MAX_COEFFICIENT) <= 0) {
+        return 0;
+      }
+      if (Long.compareUnsigned(valueLow, POW10_LOW[1]) < 0) {
+        return 1;
+      }
+      if (Long.compareUnsigned(valueLow, POW10_LOW[2]) < 0) {
+        return 2;
+      }
+      if (Long.compareUnsigned(valueLow, POW10_LOW[3]) < 0) {
+        return 3;
+      }
+      return 4;
     }
-    int bits = valueHigh == 0
-        ? 64 - Long.numberOfLeadingZeros(valueLow)
-        : 128 - Long.numberOfLeadingZeros(valueHigh);
+    int bits = 128 - Long.numberOfLeadingZeros(valueHigh);
     int digits = (((bits - 1) * 1233) >>> 12) + 1;
     int threshold = digits - 16;
     if (compare(

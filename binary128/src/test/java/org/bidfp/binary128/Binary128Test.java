@@ -213,6 +213,11 @@ final class Binary128Test {
     StatusFlags packStatus = new StatusFlags();
     assertEquals(result, UxOps.pack(UxOps.unpack(signaling), RN, packStatus));
     assertEquals(StatusFlags.INVALID, packStatus.bits());
+
+    Binary128 quiet = Binary128.fromRawBits(
+        0x7fff_abcd_0123_4567L, 0x89ab_cdef_0123_4567L);
+    assertEquals(quiet, Binary128.ONE.subtract(quiet, RN, new StatusFlags()));
+    assertEquals(quiet, quiet.multiply(Binary128.ONE, RN, new StatusFlags()));
   }
 
   @Test
@@ -228,6 +233,10 @@ final class Binary128Test {
         Binary128.ZERO.multiply(
             Binary128.POSITIVE_INFINITY, RN, invalidStatus).isNaN());
     assertEquals(StatusFlags.INVALID, invalidStatus.bits());
+    assertEquals(
+        Binary128.NAN,
+        Binary128.ZERO.multiply(
+            Binary128.POSITIVE_INFINITY, RN, new StatusFlags()));
 
     StatusFlags denormalStatus = new StatusFlags();
     Binary128 minimumSubnormal = Binary128.fromRawBits(0L, 1L);
@@ -269,6 +278,213 @@ final class Binary128Test {
         assertEquals(expectedStatus.bits(), actualStatus.bits());
       }
     }
+  }
+
+  @Test
+  void packedAddSubAndMultiplyMatchExactReference() {
+    Random random = new Random(0xadd_0128L);
+    for (int trial = 0; trial < 2_000; trial++) {
+      Binary128 x = randomNormal(random);
+      Binary128 y = randomNormal(random);
+      for (RoundingMode mode : RoundingMode.values()) {
+        assertAddMatchesExact(x, y, false, mode);
+        assertAddMatchesExact(x, y, true, mode);
+        assertMultiplyMatchesExact(x, y, mode);
+      }
+    }
+  }
+
+  @Test
+  void fixedLimbDivisionMatchesBigIntegerQuotientAndRemainder() {
+    Random random = new Random(0xd1f_0128L);
+    for (int trial = 0; trial < 20_000; trial++) {
+      long aHigh = random.nextLong() | Unpacked.UX_MSB;
+      long aLow = random.nextLong();
+      long bHigh = random.nextLong() | Unpacked.UX_MSB;
+      long bLow = random.nextLong();
+      BigInteger a = Wide.u128(aHigh, aLow);
+      BigInteger b = Wide.u128(bHigh, bLow);
+      BigInteger[] expected = a.shiftLeft(128).divideAndRemainder(b);
+      long[] division = new long[5];
+      Wide.divFrac128(aHigh, aLow, bHigh, bLow, division);
+      BigInteger actualQuotient = Wide.u128(division[1], division[2]);
+      if (division[0] != 0L) {
+        actualQuotient = actualQuotient.setBit(128);
+      }
+      String context = "trial " + trial;
+      assertEquals(expected[0], actualQuotient, context);
+      assertEquals(expected[1], Wide.u128(division[3], division[4]), context);
+    }
+  }
+
+  @Test
+  void fixedLimbSquareRootMatchesBigIntegerFloorAndSticky() {
+    Random random = new Random(0x5a7_0128L);
+    for (int trial = 0; trial < 20_000; trial++) {
+      long high = random.nextLong() | Unpacked.UX_MSB;
+      long low = random.nextLong();
+      for (boolean odd : new boolean[] {false, true}) {
+        BigInteger radicand = Wide.u128(high, low).shiftLeft(128 + (odd ? 1 : 0));
+        BigInteger expectedRoot = radicand.sqrt();
+        boolean expectedSticky = !expectedRoot.multiply(expectedRoot).equals(radicand);
+        long[] root = new long[3];
+        boolean actualSticky = Wide.sqrtScaled128(high, low, odd, root);
+        BigInteger actualRoot = Wide.u128(root[1], root[2]);
+        if (root[0] != 0L) {
+          actualRoot = actualRoot.setBit(128);
+        }
+        String context = "trial " + trial + ", odd " + odd;
+        assertEquals(expectedRoot, actualRoot, context);
+        assertEquals(expectedSticky, actualSticky, context);
+      }
+    }
+  }
+
+  @Test
+  void packedDivisionAndSquareRootMatchBigIntegerReference() {
+    Random random = new Random(0xd175_5a7L);
+    for (int trial = 0; trial < 4_000; trial++) {
+      Binary128 x = randomFiniteNonzero(random);
+      Binary128 y = randomFiniteNonzero(random);
+      Binary128 positive = Binary128.fromRawBits(
+          x.highBits() & ~Binary128.MASK_SIGN, x.lowBits());
+      for (RoundingMode mode : RoundingMode.values()) {
+        assertDivideMatchesExact(x, y, mode);
+        assertSqrtMatchesExact(positive, mode);
+      }
+    }
+  }
+
+  @Test
+  void packedDivisionAndSquareRootPreserveSpecialSemantics() {
+    Binary128 signaling = Binary128.fromRawBits(
+        0xffff_1234_5678_9abcL, 0xdef0_1234_5678_9abcL);
+    Binary128 quieted = Binary128.fromRawBits(
+        0xffff_9234_5678_9abcL, 0xdef0_1234_5678_9abcL);
+    StatusFlags divStatus = new StatusFlags();
+    assertEquals(quieted, Binary128.ONE.divide(signaling, RN, divStatus));
+    assertEquals(StatusFlags.INVALID, divStatus.bits());
+    StatusFlags sqrtStatus = new StatusFlags();
+    assertEquals(quieted, signaling.sqrt(RN, sqrtStatus));
+    assertEquals(StatusFlags.INVALID, sqrtStatus.bits());
+
+    StatusFlags zeroStatus = new StatusFlags();
+    assertEquals(
+        Binary128.NEGATIVE_INFINITY,
+        Binary128.ONE.negate().divide(Binary128.ZERO, RN, zeroStatus));
+    assertEquals(StatusFlags.DIVIDE_BY_ZERO, zeroStatus.bits());
+    assertEquals(
+        Binary128.NEGATIVE_ZERO,
+        Binary128.NEGATIVE_ZERO.sqrt(RN, new StatusFlags()));
+  }
+
+  private static Binary128 randomNormal(Random random) {
+    boolean sign = random.nextBoolean();
+    int exponent = 1 + random.nextInt(0x7ffe);
+    long fractionHigh = random.nextLong() & Binary128.MASK_FRACTION_HIGH;
+    return Binary128.fromFields(sign, exponent, fractionHigh, random.nextLong());
+  }
+
+  private static Binary128 randomFiniteNonzero(Random random) {
+    boolean sign = random.nextBoolean();
+    int exponent = random.nextInt(0x7fff);
+    long fractionHigh = random.nextLong() & Binary128.MASK_FRACTION_HIGH;
+    long fractionLow = random.nextLong();
+    if (exponent == 0 && fractionHigh == 0L && fractionLow == 0L) {
+      fractionLow = 1L;
+    }
+    return Binary128.fromFields(sign, exponent, fractionHigh, fractionLow);
+  }
+
+  private static void assertAddMatchesExact(
+      Binary128 x, Binary128 y, boolean subtract, RoundingMode mode) {
+    IeeeRound.Finite a = IeeeRound.decode(x);
+    IeeeRound.Finite b = IeeeRound.decode(y);
+    int commonExponent = Math.min(a.exponent, b.exponent);
+    BigInteger left = a.significand.shiftLeft(a.exponent - commonExponent);
+    BigInteger right = b.significand.shiftLeft(b.exponent - commonExponent);
+    if (a.negative) {
+      left = left.negate();
+    }
+    if (b.negative ^ subtract) {
+      right = right.negate();
+    }
+    BigInteger sum = left.add(right);
+    boolean negative = sum.signum() < 0
+        || (sum.signum() == 0 && mode == RoundingMode.TOWARD_NEGATIVE);
+    StatusFlags expectedStatus = new StatusFlags();
+    Binary128 expected = sum.signum() == 0
+        ? (negative ? Binary128.NEGATIVE_ZERO : Binary128.ZERO)
+        : IeeeRound.binary128(
+            negative,
+            sum.abs(),
+            BigInteger.ONE,
+            commonExponent,
+            mode,
+            expectedStatus);
+    StatusFlags actualStatus = new StatusFlags();
+    Binary128 actual = subtract
+        ? x.subtract(y, mode, actualStatus)
+        : x.add(y, mode, actualStatus);
+    String context = (subtract ? "sub" : "add") + " " + mode + " " + x + " " + y;
+    assertEquals(expected, actual, context);
+    assertEquals(expectedStatus.bits(), actualStatus.bits(), context);
+  }
+
+  private static void assertMultiplyMatchesExact(
+      Binary128 x, Binary128 y, RoundingMode mode) {
+    IeeeRound.Finite a = IeeeRound.decode(x);
+    IeeeRound.Finite b = IeeeRound.decode(y);
+    StatusFlags expectedStatus = new StatusFlags();
+    Binary128 expected = IeeeRound.binary128(
+        a.negative ^ b.negative,
+        a.significand.multiply(b.significand),
+        BigInteger.ONE,
+        a.exponent + b.exponent,
+        mode,
+        expectedStatus);
+    StatusFlags actualStatus = new StatusFlags();
+    Binary128 actual = x.multiply(y, mode, actualStatus);
+    String context = "mul " + mode + " " + x + " " + y;
+    assertEquals(expected, actual, context);
+    assertEquals(expectedStatus.bits(), actualStatus.bits(), context);
+  }
+
+  private static void assertDivideMatchesExact(
+      Binary128 x, Binary128 y, RoundingMode mode) {
+    IeeeRound.Finite a = IeeeRound.decode(x);
+    IeeeRound.Finite b = IeeeRound.decode(y);
+    StatusFlags expectedStatus = new StatusFlags();
+    Binary128 expected = IeeeRound.binary128(
+        a.negative ^ b.negative,
+        a.significand,
+        b.significand,
+        a.exponent - b.exponent,
+        mode,
+        expectedStatus);
+    StatusFlags actualStatus = new StatusFlags();
+    Binary128 actual = x.divide(y, mode, actualStatus);
+    int expectedFlags = expectedStatus.bits();
+    if (x.isSubnormal() || y.isSubnormal()) {
+      expectedFlags |= StatusFlags.DENORMAL;
+    }
+    String context = "div " + mode + " " + x + " " + y;
+    assertEquals(expected, actual, context);
+    assertEquals(expectedFlags, actualStatus.bits(), context);
+  }
+
+  private static void assertSqrtMatchesExact(Binary128 x, RoundingMode mode) {
+    StatusFlags expectedStatus = new StatusFlags();
+    Binary128 expected = IeeeRound.sqrt(x, mode, expectedStatus);
+    StatusFlags actualStatus = new StatusFlags();
+    Binary128 actual = x.sqrt(mode, actualStatus);
+    int expectedFlags = expectedStatus.bits();
+    if (x.isSubnormal()) {
+      expectedFlags |= StatusFlags.DENORMAL;
+    }
+    String context = "sqrt " + mode + " " + x;
+    assertEquals(expected, actual, context);
+    assertEquals(expectedFlags, actualStatus.bits(), context);
   }
 
   private static void assertDoubleBits(

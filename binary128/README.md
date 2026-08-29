@@ -59,10 +59,13 @@ DPML source tree is not automatically part of this artifact.
 ## What landed
 
 - Packed classification and field contract for `BidConvert`.
-- Unpacked UX (`Unpacked` + `UxOps`): normalize, unpack, five-mode pack,
-  add/sub/mul/div/compare/sqrt. Pack uses the DPML `S/K/L/R` bit-vectors.
+- Packed and unpacked UX (`Unpacked` + `UxOps`): normalize, unpack, five-mode
+  pack, add/sub/mul/div/compare/sqrt. Normal arithmetic uses fixed-width limbs;
+  division and square root no longer depend on `BigInteger`.
 - Kernel families listed above use Intel QUAD UX range reduction and
   rational/polynomial paths (not `java.lang.Math`).
+- Kernel evaluation uses nestable per-thread scratch frames, and large-angle
+  trig reduction uses Intel's fixed-window Payne-Hanek limb convolution.
 - Intel QUAD UX tables are generated into
   `tables/{Cons,Exp,Log,Pow,Cbrt,Trig,InvTrig,InvHyper,Erf,Lgamma}X` and
   `FourOverPi` by `binary128/tools/gen_dpml_tables.py`, which reads an external
@@ -94,11 +97,11 @@ java -jar binary128/target/binary128-benchmarks.jar \
   -prof gc -rf json -rff binary128/target/benchmark-results/result.json
 ```
 
-On an Apple arm64 host with Temurin 17.0.18, this optimization pass reduced the
-geometric-mean latency of the 27 transcendental benchmarks from 1,071 to 833
-ns/op (22.3%). Every measured operation improved; individual gains ranged from
-1.4% for `asinh` to 43.2% for `expm1` and `sinh`. Results are machine-specific
-and should only be compared with identical JVM and JMH settings.
+On a Linux x86-64 host with OpenJDK 17.0.15, a like-for-like short run reduced
+the geometric-mean latency of all 33 benchmarks from 1,192 to 497 ns/op (2.40x).
+The 27 transcendental benchmarks improved from 1,676 to 840 ns/op (2.00x).
+Results are machine-specific and should only be compared with identical JVM
+and JMH settings.
 
 ## BID integration
 
