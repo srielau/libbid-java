@@ -1,5 +1,5 @@
 Java BID decimal floating-point library
-Copyright 2026 Serge Rielau
+Copyright 2026 Databricks, Inc.
 
 This product includes a Java port of algorithms from the Intel Decimal
 Floating-Point Math Library (Intel RDFP Math Library 2.0 Update 4).
